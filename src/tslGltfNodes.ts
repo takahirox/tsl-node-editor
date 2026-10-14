@@ -74,11 +74,38 @@ export const createEditorNodeResolver = () => {
   }
 }
 
-// The plugin resolves references atomically. Validate adapter-specific required
-// inputs as well, before onApplied publishes any material replacement.
+// Required MathNode inputs in the pinned r186 API. Other methods are unary;
+// atan accepts an optional second input. clamp's TSL defaults are serialized as
+// explicit nodes, so all three inputs are still required in the file graph.
+const binaryMathMethods = new Set(['equals', 'min', 'max', 'step', 'reflect', 'distance', 'difference', 'dot', 'cross', 'pow', 'transformDirection'])
+const ternaryMathMethods = new Set(['mix', 'clamp', 'refract', 'smoothstep', 'faceforward'])
+
+// The plugin resolves references atomically, but its constructors use placeholder
+// inputs. Validate file inputs before onApplied publishes a material replacement.
 export const validateEditorNodeLinks = (extension: ExtensionDefinition) => {
-  const isNodeRef = (value: unknown) => Boolean(value && typeof value === 'object' && '$ref' in value)
+  const isNodeRef = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const reference = value as Record<string, unknown>
+    return Object.keys(reference).length === 1 && Object.hasOwn(reference, '$ref') &&
+      typeof reference.$ref === 'string' && Object.hasOwn(extension.nodes, reference.$ref)
+  }
   for (const definition of Object.values(extension.nodes)) {
+    if (definition.op === 'MathNode' || definition.op === 'OperatorNode') {
+      const args = record(definition.args)
+      const operation = String(definition.op === 'MathNode' ? args.method : args.op)
+      const required = ['aNode']
+      if (definition.op === 'OperatorNode' ? !['!', '~'].includes(operation) : binaryMathMethods.has(operation) || ternaryMathMethods.has(operation)) {
+        required.push('bNode')
+      }
+      if (definition.op === 'MathNode' && ternaryMathMethods.has(operation)) required.push('cNode')
+      const inputs = definition.op === 'MathNode' ? ['aNode', 'bNode', 'cNode'] : ['aNode', 'bNode']
+      for (const input of inputs) {
+        const value = definition.links?.[input]
+        if ((required.includes(input) || value != null) && !isNodeRef(value)) {
+          throw new Error(`Invalid ${definition.op} "${operation}" ${input} input: expected a node reference`)
+        }
+      }
+    }
     if (['VarNode', 'ConvertNode', 'SplitNode'].includes(definition.op) && !isNodeRef(definition.links?.node)) {
       throw new Error(`Missing editor ${definition.op} node input`)
     }

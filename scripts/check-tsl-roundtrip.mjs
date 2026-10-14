@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, MeshPhysicalMaterial } from 'three'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial } from 'three/webgpu'
-import { uniform, positionLocal, texture, uv, atan, float, vec3, color } from 'three/tsl'
+import { uniform, positionLocal, texture, uv, atan, float, vec3, color, add, not, bitNot, sin, min, mix, clamp } from 'three/tsl'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { createDefaultContainer, write, VK_FORMAT_R8G8B8A8_UNORM } from 'three/addons/libs/ktx-parse.module.js'
 import { Texture } from 'three'
@@ -243,6 +243,70 @@ for (const extension of invalidExtensions) {
 }
 }
 console.log('PASS glTF/GLB invalid version/type/graph/op/cycle/adapters: diagnostics and complete ordinary fallback')
+
+// Corrupt real exported operations so resolver placeholders cannot hide missing
+// inputs. Include unary operators and both atan forms to avoid rejecting valid graphs.
+const operationCases = [
+  ['addition', () => add(uniform(0.2), uniform(0.4)), ['aNode', 'bNode']],
+  ['logical not', () => not(uniform(false)), ['aNode']],
+  ['bitwise not', () => bitNot(uniform(1, 'int')), ['aNode']],
+  ['sin', () => sin(uniform(0.2)), ['aNode']],
+  ['min', () => min(uniform(0.2), uniform(0.4)), ['aNode', 'bNode']],
+  ['mix', () => mix(uniform(0.2), uniform(0.4), uniform(0.6)), ['aNode', 'bNode', 'cNode']],
+  ['clamp', () => clamp(uniform(0.2)), ['aNode', 'bNode', 'cNode']],
+  ['unary atan', () => atan(uniform(0.2)), ['aNode']],
+  ['binary atan', () => atan(uniform(0.2), uniform(0.4)), ['aNode']],
+]
+for (const [label, createNode, requiredInputs] of operationCases) {
+  const original = new MeshStandardNodeMaterial({ color: 0x234567, roughness: 0.3, metalness: 0.7, emissive: 0x123456, opacity: 0.8, transparent: true })
+  original.opacityNode = createNode()
+  const asset = await exportEditorMeshes([new Mesh(geometry, original)], false)
+  const extension = asset.materials[0].extensions[extensionName]
+  const operationId = Object.keys(extension.nodes).find((id) => ['MathNode', 'OperatorNode'].includes(extension.nodes[id].op))
+  assert.ok(operationId)
+  const operation = extension.nodes[operationId]
+  for (const binary of [false, true]) {
+    const diagnostics = []
+    const imported = meshesOf(await load(binary ? toGLB(asset) : asset, diagnostics))[0].material
+    assert.equal(imported.type, original.type)
+    assert.deepEqual(diagnostics, [])
+    const reexport = await exportEditorMeshes([new Mesh(geometry, imported)], false)
+    assert.deepEqual(reexport.materials[0].extensions[extensionName], extension)
+    checks++
+
+    const mutations = [{ slot: 'aNode', apply: (node) => { delete node.links } }]
+    for (const slot of Object.keys(operation.links)) {
+      if (requiredInputs.includes(slot)) mutations.push({ slot, apply: (node) => { delete node.links[slot] } })
+      for (const value of [{}, [], { nested: operation.links[slot] }]) {
+        mutations.push({ slot, apply: (node) => { node.links[slot] = value } })
+      }
+    }
+    // Optional inputs must also be node references when supplied.
+    if (label === 'unary atan') mutations.push({ slot: 'bNode', apply: (node) => { node.links.bNode = {} } })
+    for (const { slot, apply } of mutations) {
+      const fixture = structuredClone(asset)
+      apply(fixture.materials[0].extensions[extensionName].nodes[operationId])
+      const errors = []
+      const gltf = await load(binary ? toGLB(fixture) : fixture, errors)
+      const loaded = meshesOf(gltf)[0].material
+      assert.equal(loaded.type, 'MeshStandardMaterial', `${label} invalid ${slot} must fall back`)
+      assert.equal(loaded.isNodeMaterial, undefined)
+      assert.equal(loaded.opacityNode, undefined)
+      for (const key of ['roughness', 'metalness', 'opacity', 'transparent']) assert.equal(loaded[key], original[key])
+      for (const key of ['color', 'emissive']) assert.ok(loaded[key].equals(original[key]))
+      assert.equal(errors.length, 1)
+      assert.ok(errors[0].includes(operation.op), errors[0])
+      assert.ok(errors[0].includes(operation.args.op ?? operation.args.method), errors[0])
+      assert.ok(errors[0].includes(slot), errors[0])
+      const cached = await gltf.parser.getDependency('material', 0)
+      assert.equal(cached.type, loaded.type)
+      assert.equal(cached.opacityNode, undefined)
+      assert.ok(cached.color.equals(original.color))
+      checks++
+    }
+  }
+  console.log(`PASS glTF/GLB ${label}: valid round-trip and malformed inputs preserve ordinary PBR with diagnostics`)
+}
 
 // Exercise real KTX2 parsing and GLTFLoader texture dependencies, without a GPU
 // or Basis worker: a tiny uncompressed KTX2 fixture has deterministic pixels.
