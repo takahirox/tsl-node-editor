@@ -17,20 +17,23 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:tsl": "node scripts/check-tsl-publication.mjs && node scripts/check-tsl-roundtrip.mjs",
+    "check:tsl:browser": "node scripts/check-tsl-browser.mjs"
   },
   "dependencies": {
-    "@takahirox/gltf-three-materials-tsl-exporter": "^0.3.0",
+    "@takahirox/gltf-three-materials-tsl-exporter": "0.4.1",
+    "@takahirox/gltf-three-materials-tsl-loader": "0.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "three": "^0.182.0"
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.182.0",
+    "@types/three": "0.186.0",
     "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

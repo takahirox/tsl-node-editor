@@ -11,6 +11,7 @@ Live Demo: https://takahirox.github.io/tsl-node-editor/
 - Material and geometry outputs
 - Function node creation and reuse
 - GLTF geometry/material/texture nodes
+- [Draft v2.0 TSL glTF/GLB import, preview and export](docs/tsl-gltf.md)
 - Export to TSL, material, or app output (JS/TS)
 
 ## Requirements

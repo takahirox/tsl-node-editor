@@ -30,10 +30,8 @@ import {
   WebGPURenderer,
 } from 'three/webgpu'
 import WebGPU from 'three/addons/capabilities/WebGPU.js'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
-import { THREEMaterialsTSLExporterPlugin } from '@takahirox/gltf-three-materials-tsl-exporter'
-import { createDefaultNodeSerializer } from './tslGltfExporter'
+import { createEditorGLTFLoader, exportEditorMeshes, cloneImportedTSLMaterial, getImportedMaterialNode } from './tslGltf'
+import type { UniformNode } from 'three/webgpu'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import {
   acesFilmicToneMapping,
@@ -42,7 +40,6 @@ import {
   agxToneMapping,
   asin,
   atan,
-  atan2,
   ceil,
   clamp,
   cos,
@@ -212,7 +209,7 @@ type FunctionDefinition = {
 }
 
 type UniformEntry = {
-  uniform: ReturnType<typeof uniform>
+  uniform: UniformNode<'float', number> | UniformNode<'color', Color>
   mode: UniformUpdateMode
   source: UniformUpdateSource
   kind: 'number' | 'color'
@@ -223,15 +220,10 @@ type ConnectionMap = Map<string, GraphConnection>
 type OutputPin = 'baseColor' | 'roughness' | 'metalness'
 type ExprKind = 'color' | 'number' | 'vec2' | 'vec3' | 'vec4' | 'mat2' | 'mat3' | 'mat4'
 type ExprResult = { expr: string; kind: ExprKind }
-type TslNodeValue =
-  | ReturnType<typeof color>
-  | ReturnType<typeof float>
-  | ReturnType<typeof vec2>
-  | ReturnType<typeof vec3>
-  | ReturnType<typeof vec4>
-  | ReturnType<typeof mat2>
-  | ReturnType<typeof mat3>
-  | ReturnType<typeof mat4>
+// Pin kinds are checked by the dynamic graph resolver; r186 constructor return
+// types describe concrete implementations rather than interchangeable nodes.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TslNodeValue = any
 type TslNodeResult = { node: TslNodeValue; kind: ExprKind }
 type PaletteItem = {
   type: string
@@ -624,8 +616,9 @@ function App() {
     null,
   )
   const nodeUniformsRef = useRef<Record<string, UniformEntry>>({})
-  const fallbackColorUniformRef = useRef<ReturnType<typeof uniform> | null>(null)
+  const fallbackColorUniformRef = useRef<UniformNode<'float', number> | UniformNode<'color', Color> | null>(null)
   const graphSignatureRef = useRef<string>('')
+  const isImportedPreviewRef = useRef(false)
   const textureSignatureRef = useRef<string>('')
   const textureMapRef = useRef<Record<string, { src: string; texture: Texture }>>(
     {},
@@ -2634,7 +2627,7 @@ function App() {
     currentConnections: GraphConnection[],
     version: number,
   ): { nodes: GraphNode[]; connections: GraphConnection[]; version: number } => {
-    let nextNodes = currentNodes
+    const nextNodes = currentNodes
     let nextConnections = currentConnections
     let nextVersion = version
 
@@ -3776,7 +3769,7 @@ function App() {
         setToast(`Saved slot "${slotKey}"`)
       }
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       if (!options?.silent) {
         setToast('Save failed')
       }
@@ -3796,7 +3789,7 @@ function App() {
       })
       setToast(`Deleted slot "${slotKey}"`)
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       setToast('Delete failed')
     }
   }
@@ -3813,7 +3806,7 @@ function App() {
         tx.onerror = () => reject(tx.error)
       })
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       setToast('Clear failed')
     }
   }
@@ -3932,7 +3925,7 @@ function App() {
         setToast(`Loaded slot "${slotKey}"`)
       }
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       if (!options?.silent) {
         setToast('Load failed')
       }
@@ -5239,13 +5232,17 @@ function App() {
 
   const graphComputeSignature = useMemo(() => {
     const normalizedNodes = nodes.map((node) => {
-      const { x: _x, y: _y, ...rest } = node
+      const rest: Partial<GraphNode> = { ...node }
+      delete rest.x
+      delete rest.y
       return rest
     })
     const normalizedFunctions = Object.values(functions).map((fn) => ({
       ...fn,
       nodes: fn.nodes.map((node) => {
-        const { x: _x, y: _y, ...rest } = node
+        const rest: Partial<GraphNode> = { ...node }
+        delete rest.x
+        delete rest.y
         return rest
       }),
     }))
@@ -5293,14 +5290,16 @@ function App() {
 
   const editorGraphSignature = useMemo(() => {
     const normalizedNodes = editorNodes.map((node) => {
-      const { x: _x, y: _y, ...rest } = node
+      const rest: Partial<GraphNode> = { ...node }
+      delete rest.x
+      delete rest.y
       return rest
     })
     return JSON.stringify({ nodes: normalizedNodes, connections: editorConnections })
   }, [editorNodes, editorConnections])
 
   const applyNumberUniformUpdate = (
-    uniformNode: ReturnType<typeof uniform>,
+    uniformNode: UniformNode<'float', number>,
     mode: UniformUpdateMode,
     source: UniformUpdateSource,
   ) => {
@@ -5475,7 +5474,7 @@ function App() {
       const resolveColorSource = (entry: ReturnType<typeof getInput> | null) =>
         entry ? toVec3Node(entry) : color(0)
       const wrapColorResult = (
-        result: ReturnType<typeof vec3> | ReturnType<typeof color>,
+        result: TslNodeValue,
         entry: ReturnType<typeof getInput> | null,
       ) => {
         const kind: ExprKind = entry?.kind === 'color' || !entry ? 'color' : 'vec3'
@@ -6292,7 +6291,7 @@ function App() {
           stack.delete(nodeId)
           return { node: float(0), kind: 'number' }
         }
-        const edge =
+        const edge: TslNodeValue =
           kind === 'number'
             ? float(0.5)
             : kind === 'vec2'
@@ -6314,8 +6313,8 @@ function App() {
               ? inputB.node
               : float(0)
             : toVectorNode(inputB, kind)
-        const maskA = step(edge, valueA)
-        const maskB = step(edge, valueB)
+        const maskA: TslNodeValue = step(edge, valueA)
+        const maskB: TslNodeValue = step(edge, valueB)
         const nodeResult = node.type === 'and' ? maskA.mul(maskB) : max(maskA, maskB)
         stack.delete(nodeId)
         return { node: nodeResult, kind }
@@ -6327,7 +6326,7 @@ function App() {
           stack.delete(nodeId)
           return { node: float(0), kind: 'number' }
         }
-        const edge =
+        const edge: TslNodeValue =
           kind === 'number'
             ? float(0.5)
             : kind === 'vec2'
@@ -6343,7 +6342,7 @@ function App() {
               ? input.node
               : float(0)
             : toVectorNode(input, kind)
-        const mask = step(edge, value)
+        const mask: TslNodeValue = step(edge, value)
         const nodeResult = oneMinus(mask)
         stack.delete(nodeId)
         return { node: nodeResult, kind }
@@ -6356,7 +6355,7 @@ function App() {
           inputX?.kind ?? 'number',
         ])
         if (combined === 'number') {
-          const nodeResult = atan2(
+          const nodeResult = atan(
             inputY?.kind === 'number' ? inputY.node : float(0),
             inputX?.kind === 'number' ? inputX.node : float(0),
           )
@@ -6366,7 +6365,7 @@ function App() {
         if (combined === 'color' || combined === 'vec2' || combined === 'vec3' || combined === 'vec4') {
           const nodeY = toVectorNode(inputY, combined)
           const nodeX = toVectorNode(inputX, combined)
-          const nodeResult = atan2(nodeY, nodeX)
+          const nodeResult = atan(nodeY, nodeX)
           stack.delete(nodeId)
           return { node: nodeResult, kind: combined }
         }
@@ -6627,7 +6626,7 @@ function App() {
       ) {
         const input = getInput('value')
         const source = resolveColorSource(input)
-        let nodeResult: ReturnType<typeof vec3> | ReturnType<typeof color>
+        let nodeResult: TslNodeValue
         if (node.type === 'grayscale') {
           nodeResult = grayscale(source)
         } else if (node.type === 'saturation') {
@@ -6701,12 +6700,17 @@ function App() {
           stack.delete(nodeId)
           return fallbackColorNode()
         }
+        const imported = getImportedMaterialNode(material, pin)
+        if (imported) {
+          stack.delete(nodeId)
+          return { node: imported.node as TslNodeValue, kind: imported.kind }
+        }
         if (pin === 'baseColor') {
           const base = getColorNode(material.color)
           const tex = getTextureNode(material.map)
           if (base && tex) {
             stack.delete(nodeId)
-            return { node: base.node.mul(tex.node), kind: 'color' }
+            return { node: base.node.mul(tex.node as TslNodeValue), kind: 'color' }
           }
           if (base) {
             stack.delete(nodeId)
@@ -9194,7 +9198,7 @@ function App() {
           return out
         }
         let expr = `(${left.expr} ${op} ${right.expr})`
-        let kind: typeof combined = combined
+        const kind: typeof combined = combined
         if (combined === 'color') {
           expr = `(${asColor(left.expr, left.kind === 'number' ? 'number' : 'color')} ${op} ${asColor(
             right.expr,
@@ -11116,7 +11120,7 @@ function App() {
                 ? asVec4(inputX.expr, 'number')
                 : 'vec4(0.0, 0.0, 0.0, 1.0)'
         }
-        const expr = `atan2(${exprY}, ${exprX})`
+        const expr = `atan(${exprY}, ${exprX})`
         const name = nextVar(kind === 'number' ? 'num' : 'vec')
         decls.push(`const ${name} = ${expr};`)
         const out = { expr: name, kind }
@@ -12546,7 +12550,6 @@ function App() {
       'agxToneMapping',
       'asin',
       'atan',
-      'atan2',
       'ceil',
       'checker',
       'clamp',
@@ -12985,7 +12988,7 @@ function App() {
                 ? asVec4(inputX.expr, 'number')
                 : 'vec4(0.0, 0.0, 0.0, 1.0)'
         }
-        const expr = `atan2(${exprY}, ${exprX})`
+        const expr = `atan(${exprY}, ${exprX})`
         const name = nextVar(kind === 'number' ? 'num' : 'vec')
         decls.push(`const ${name} = ${expr};`)
         const out = { expr: name, kind }
@@ -15007,48 +15010,11 @@ function App() {
 
   useEffect(() => {
     if (tslOutputKind !== 'gltf') return
-    const exporter = new GLTFExporter()
-    const scene = new Scene()
-    const meshes = meshesRef.current
-    if (!meshes.length) {
-      setGltfOutputText('// No mesh to export')
-      return
-    }
-    const rawMaterial = meshes[0]?.material
-    const primaryMaterial = Array.isArray(rawMaterial) ? rawMaterial[0] : rawMaterial
-    const entrypoints = primaryMaterial
-      ? [
-          'colorNode',
-          'roughnessNode',
-          'metalnessNode',
-          'emissiveNode',
-          'opacityNode',
-          'alphaTestNode',
-          'positionNode',
-          'clearcoatNode',
-          'clearcoatRoughnessNode',
-        ].filter((slot) =>
-          Boolean((primaryMaterial as unknown as Record<string, unknown>)[slot]),
-        )
-      : []
-    exporter.register(
-      (writer) =>
-        new THREEMaterialsTSLExporterPlugin(writer, {
-          entrypoints,
-          nodeSerializer: createDefaultNodeSerializer(),
-        }),
-    )
-    meshes.forEach((mesh) => {
-      const clone = mesh.clone()
-      clone.geometry = mesh.geometry
-      clone.material = mesh.material
-      clone.updateMatrix()
-      clone.updateMatrixWorld(true)
-      scene.add(clone)
-    })
-    exporter.parse(
-      scene,
+    let cancelled = false
+    // Preview effects update mesh materials synchronously in this same commit.
+    void Promise.resolve().then(() => exportEditorMeshes(meshesRef.current, false)).then(
       (result) => {
+        if (cancelled) return
         if (typeof result === 'string') {
           setGltfOutputText(result)
           return
@@ -15072,11 +15038,11 @@ function App() {
       },
       (error) => {
         const message = error instanceof Error ? error.message : 'Unknown glTF error'
-        setGltfOutputText(`// glTF export failed: ${message}`)
+        if (!cancelled) setGltfOutputText(`// glTF export failed: ${message}`)
       },
-      { binary: false },
     )
-  }, [tslOutputKind, graphSignature, geometrySignature, textureSignature])
+    return () => { cancelled = true }
+  }, [tslOutputKind, graphSignature, geometrySignature, textureSignature, materialReady])
   const viewerTextures = useMemo(() => {
     const expanded = expandFunctions(nodes, connections, functions)
     const payload: Record<string, { src: string; name?: string }> = {}
@@ -15185,47 +15151,11 @@ function App() {
   }, [exportFormat, tslOutput, tslOutputKind])
 
   const downloadGltfExport = useCallback(() => {
-    const exporter = new GLTFExporter()
-    const scene = new Scene()
-    const meshes = meshesRef.current
-    if (!meshes.length) {
+    if (!meshesRef.current.length) {
       setToast('No mesh to export')
       return
     }
-    const rawMaterial = meshes[0]?.material
-    const primaryMaterial = Array.isArray(rawMaterial) ? rawMaterial[0] : rawMaterial
-    const entrypoints = primaryMaterial
-      ? [
-          'colorNode',
-          'roughnessNode',
-          'metalnessNode',
-          'emissiveNode',
-          'opacityNode',
-          'alphaTestNode',
-          'positionNode',
-          'clearcoatNode',
-          'clearcoatRoughnessNode',
-        ].filter((slot) =>
-          Boolean((primaryMaterial as unknown as Record<string, unknown>)[slot]),
-        )
-      : []
-    exporter.register(
-      (writer) =>
-        new THREEMaterialsTSLExporterPlugin(writer, {
-          entrypoints,
-          nodeSerializer: createDefaultNodeSerializer(),
-        }),
-    )
-    meshes.forEach((mesh) => {
-      const clone = mesh.clone()
-      clone.geometry = mesh.geometry
-      clone.material = mesh.material
-      clone.updateMatrix()
-      clone.updateMatrixWorld(true)
-      scene.add(clone)
-    })
-    exporter.parse(
-      scene,
+    void exportEditorMeshes(meshesRef.current, true).then(
       (result) => {
         if (result instanceof ArrayBuffer) {
           const blob = new Blob([result], { type: 'model/gltf-binary' })
@@ -15252,7 +15182,6 @@ function App() {
         const message = error instanceof Error ? error.message : 'Unknown glTF error'
         setToast(`glTF export failed: ${message}`)
       },
-      { binary: true },
     )
   }, [])
 
@@ -15274,15 +15203,47 @@ function App() {
     } = buildGraph()
     const expanded = expandFunctions(nodes, connections, functions)
     const meshes = meshesRef.current
+    const nodeMap = buildNodeMap(expanded.nodes)
+    const connectionMap = buildConnectionMap(expanded.connections)
+    const output = expanded.nodes.find((node) => node.type === 'output')
+    const outputConnection = output ? connectionMap.get(`${output.id}:baseColor`) : undefined
+    const source = outputConnection ? nodeMap.get(outputConnection.from.nodeId) : undefined
+    const entry = source?.type === 'gltfMaterial' ? gltfMapRef.current[source.id] : undefined
+    const importedMaterial = entry && source && outputConnection?.from.pin === 'baseColor'
+      ? entry.materials[getMaterialIndex(source, entry.materials.length)]
+      : undefined
+    const importedPreview = importedMaterial ? cloneImportedTSLMaterial(importedMaterial) : null
+    if (importedPreview) {
+      isImportedPreviewRef.current = true
+      if (importedPreview instanceof MeshStandardNodeMaterial) {
+        if (output && connectionMap.has(`${output.id}:roughness`) && roughnessNode?.kind === 'number') {
+          importedPreview.roughnessNode = roughnessNode.node
+        }
+        if (output && connectionMap.has(`${output.id}:metalness`) && metalnessNode?.kind === 'number') {
+          importedPreview.metalnessNode = metalnessNode.node
+        }
+      }
+      if (vertexPositionNode) {
+        importedPreview.positionNode = positionLocal.add(vertexPositionNode.node)
+      }
+      materialRef.current?.dispose()
+      materialRef.current = importedPreview
+      meshes.forEach((mesh) => { mesh.material = importedPreview })
+      graphSignatureRef.current = graphSignature
+      textureSignatureRef.current = textureSignature
+      return
+    }
     let material = materialRef.current
     const needsBasic = materialKind === 'basic'
     const needsPhysical = materialKind === 'physical'
     const needsStandard = materialKind === 'standard'
     const needsSwap =
+      isImportedPreviewRef.current ||
       !material ||
       (needsBasic && !(material instanceof MeshBasicNodeMaterial)) ||
       (needsPhysical && !(material instanceof MeshPhysicalNodeMaterial)) ||
-      (needsStandard && !(material instanceof MeshStandardNodeMaterial))
+      (needsStandard && (!(material instanceof MeshStandardNodeMaterial) || material instanceof MeshPhysicalNodeMaterial))
+    isImportedPreviewRef.current = false
     let materialChanged = false
     if (needsSwap) {
       const nextMaterial = needsBasic
@@ -15981,11 +15942,10 @@ function App() {
 
   useEffect(() => {
     if (!ktx2Ready) return
-    const loader = new GLTFLoader()
-    const ktx2Loader = ktx2LoaderRef.current
-    if (ktx2Loader) {
-      loader.setKTX2Loader(ktx2Loader)
-    }
+    const loader = createEditorGLTFLoader((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      setToast(`TSL import uses ordinary glTF fallback: ${message}`)
+    }, ktx2LoaderRef.current ?? undefined)
     const nextMap: Record<string, GltfAssetEntry> = {
       ...gltfMapRef.current,
     }
@@ -16913,7 +16873,7 @@ function App() {
       if (!disposed) {
         setStatus('Compiling shaders...')
       }
-    } catch (error) {
+    } catch {
       if (!disposed) {
         setStatus('Renderer init failed')
       }
