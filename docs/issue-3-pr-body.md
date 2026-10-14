@@ -48,6 +48,10 @@ The latest operation-validation fix was checked in the assigned worktree:
   rerun for the operation-validation fixes.
 - Script syntax and whitespace checks pass.
 
+Publication checks: script syntax and `git diff --check` pass. Runtime results
+above are inherited from the upstream checkpoints; application and browser checks
+were not rerun for this PR publication update.
+
 Optional visual comparison on physical GPU hardware was not performed.
 Uncompressed KTX2 parsing and registration are covered; Basis-worker transcoding
 is not exercised by these fixtures. Unsupported graph classes and generated
@@ -55,7 +59,7 @@ JavaScript preview limitations are documented.
 
 ## Related Issues
 
-Related to #3
+Closes #3
 
 Keep this PR draft and unmerged during review. Issue #3 remains open; its required
 post-deployment verification is pending and must still be recorded after deployment.
