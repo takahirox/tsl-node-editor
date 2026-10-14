@@ -2634,7 +2634,7 @@ function App() {
     currentConnections: GraphConnection[],
     version: number,
   ): { nodes: GraphNode[]; connections: GraphConnection[]; version: number } => {
-    let nextNodes = currentNodes
+    const nextNodes = currentNodes
     let nextConnections = currentConnections
     let nextVersion = version
 
@@ -3776,7 +3776,7 @@ function App() {
         setToast(`Saved slot "${slotKey}"`)
       }
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       if (!options?.silent) {
         setToast('Save failed')
       }
@@ -3796,7 +3796,7 @@ function App() {
       })
       setToast(`Deleted slot "${slotKey}"`)
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       setToast('Delete failed')
     }
   }
@@ -3813,7 +3813,7 @@ function App() {
         tx.onerror = () => reject(tx.error)
       })
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       setToast('Clear failed')
     }
   }
@@ -3932,7 +3932,7 @@ function App() {
         setToast(`Loaded slot "${slotKey}"`)
       }
       void refreshStorageSlots()
-    } catch (error) {
+    } catch {
       if (!options?.silent) {
         setToast('Load failed')
       }
@@ -5239,13 +5239,17 @@ function App() {
 
   const graphComputeSignature = useMemo(() => {
     const normalizedNodes = nodes.map((node) => {
-      const { x: _x, y: _y, ...rest } = node
+      const rest: Partial<GraphNode> = { ...node }
+      delete rest.x
+      delete rest.y
       return rest
     })
     const normalizedFunctions = Object.values(functions).map((fn) => ({
       ...fn,
       nodes: fn.nodes.map((node) => {
-        const { x: _x, y: _y, ...rest } = node
+        const rest: Partial<GraphNode> = { ...node }
+        delete rest.x
+        delete rest.y
         return rest
       }),
     }))
@@ -5293,7 +5297,9 @@ function App() {
 
   const editorGraphSignature = useMemo(() => {
     const normalizedNodes = editorNodes.map((node) => {
-      const { x: _x, y: _y, ...rest } = node
+      const rest: Partial<GraphNode> = { ...node }
+      delete rest.x
+      delete rest.y
       return rest
     })
     return JSON.stringify({ nodes: normalizedNodes, connections: editorConnections })
@@ -9194,7 +9200,7 @@ function App() {
           return out
         }
         let expr = `(${left.expr} ${op} ${right.expr})`
-        let kind: typeof combined = combined
+        const kind: typeof combined = combined
         if (combined === 'color') {
           expr = `(${asColor(left.expr, left.kind === 'number' ? 'number' : 'color')} ${op} ${asColor(
             right.expr,
@@ -16913,7 +16919,7 @@ function App() {
       if (!disposed) {
         setStatus('Compiling shaders...')
       }
-    } catch (error) {
+    } catch {
       if (!disposed) {
         setStatus('Renderer init failed')
       }
