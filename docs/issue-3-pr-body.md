@@ -12,24 +12,23 @@ Remaining scope: confirm corrected compatible published packages, align dependen
 
 ## Validation
 
-Reported by the latest upstream fix checkpoint:
+Reported by earlier upstream checkpoints (not rerun during this publication):
 - Registry version lists still end at 0.4.0, and both artifact integrity hashes match the recorded blocker.
 - All six isolated runtime probes using Three.js 0.186.1 fail: Basic, Standard and Physical exports emit version "1.0" without `materialType`, and valid v2.0 imports return ordinary materials. These failures reproduce the blocker; they are not passing migration tests.
 - `npm ci`, `npm run build`, and `npm run lint` pass with the existing locked dependencies; lint retains 20 warnings. These checks do not validate the requested migrated packages.
-- The fix checkpoint applied no additional file changes.
 
 Verified for this PR update:
 - `node --check scripts/check-tsl-publication.mjs`: passed.
 - Whitespace checks for the full diff from base `b86a589` and the current worktree: passed.
-- The previous PR head `a44217d` is an ancestor of checkpoint `37e3db01f9e2e2e49cd11409c507594aa9c6afcc`; the branch was updated with a normal fast-forward push. Both commits have the same file tree.
+- The existing PR head `37e3db01f9e2e2e49cd11409c507594aa9c6afcc` is an ancestor of the assigned checkpoint `c920c0c883a12d40d8871d4f1fb6d8759b9f78c5`. The only added file since that PR head is this description artifact; no additional application changes were made.
 
 Application and registry checks were not rerun during publication. An earlier exploratory r186 build failed on TSL API/type changes, and the dependency experiment was reverted. Full migration, ordinary glTF/KTX2 preservation, glTF/GLB round-trips, shared graphs, and fallback/error acceptance remain unverified. Optional WebGPU visual comparison was not performed. The blocker document's checkpoint validation section records the earlier lint failure; the later lint fixes and passing results above supersede that result.
 
 ## Related Issues
 
-Related to #3
+Closes #3
 
-The current implementation is partial: keep the PR draft and Issue #3 open until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint.
+The closing link is included as required by the publication workflow. The current implementation is partial: keep the PR draft and Issue #3 open until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint; the closing link does not establish completion.
 
 ## Required post-merge verification
 
