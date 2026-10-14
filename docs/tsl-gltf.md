@@ -28,7 +28,10 @@ graphs. This migration does not add a general TSL-to-JavaScript decompiler.
 
 The upstream serializer/resolver pair supports shared TSL node objects,
 Const/Uniform numeric, boolean, color, vector and matrix literals, Attribute,
-Math and Operator nodes. The editor supplies paired **VarNode**, **ConvertNode**,
+Math and Operator nodes. An **AttributeNode** serializer adapter preserves explicit
+node types; imports require nonempty attribute names and supported value types,
+with missing/null types retaining geometry-based inference.
+The editor supplies paired **VarNode**, **ConvertNode**,
 **JoinNode** and **SplitNode** adapters, needed by r186's public constructors and
 swizzles. Adapter arguments, required links and allowed link properties are
 validated before publishing an imported material replacement. Literal and
@@ -63,7 +66,7 @@ npm run lint
 npm run check:tsl
 ```
 
-`check:tsl` runs six locked-package publication probes and 537 checks against the
+`check:tsl` runs six locked-package publication probes and 615 checks against the
 same editor import/export/preview functions used by `App.tsx`. It generates
 fixtures in memory, uses real Three.js loaders/exporters/plugins, and shims only
 browser file I/O primitives. Operation regressions cover missing and malformed
@@ -75,6 +78,9 @@ glTF and GLB, preserving the complete ordinary material and parser cache.
 Literal metadata regressions cover unsupported/malformed types, incompatible
 value shapes and invalid precision, alongside valid inferred/explicit types
 and re-exports.
+Attribute metadata regressions cover explicit/inferred shader types through
+import, preview pins and re-export, and reject malformed names/types with ordinary
+PBR and parser-cache preservation in both formats.
 The KTX2 fixture uses the
 real KTX2Loader and checks
 pixel data/dependency identity for ordinary and reconstructed TSL materials. It
@@ -117,6 +123,11 @@ preview graph preservation, glTF text output and the downloaded GLB. It captures
 uncaught exceptions and renderer/shader console errors. Close this dedicated
 browser and stop Vite afterward. Optional positional arguments select the local
 debugger URL and editor URL (for example different localhost ports).
+Two additional WebGPU checks compare actual pixels on fixed preview geometry in
+fresh renderer contexts before export, in the imported preview and after re-export
+for an explicitly typed scalar attribute. They confirm that an inferred vector
+attribute produces different pixels. The runner suspends the editor's animation
+loop during these independent material comparisons.
 
 These checks do not perform the optional subjective visual comparison on physical
 GPU hardware or the required GitHub Pages verification after deployment.

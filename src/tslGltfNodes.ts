@@ -1,4 +1,5 @@
 import { ConstNode } from 'three/webgpu'
+import type AttributeNode from 'three/src/nodes/core/AttributeNode.js'
 import VarNode from 'three/src/nodes/core/VarNode.js'
 import ConvertNode from 'three/src/nodes/utils/ConvertNode.js'
 import JoinNode from 'three/src/nodes/utils/JoinNode.js'
@@ -42,7 +43,18 @@ const serializeWrapper = (op: string, value: unknown): NodeExport => {
 }
 
 export const createEditorNodeSerializer = () => createDefaultNodeSerializer({
-  overrides: Object.fromEntries(['VarNode', 'ConvertNode', 'JoinNode', 'SplitNode'].map((op) => [op, (node: unknown) => serializeWrapper(op, node)])),
+  overrides: {
+    ...Object.fromEntries(['VarNode', 'ConvertNode', 'JoinNode', 'SplitNode'].map((op) => [op, (node: unknown) => serializeWrapper(op, node)])),
+    // r186's AttributeNode.serialize() omits nodeType, so the upstream
+    // serializer loses explicit types and changes shader behavior on import.
+    AttributeNode: (value: unknown): NodeExport => {
+      // The pinned types require a builder, but r186's method takes none.
+      const node = value as AttributeNode & { getAttributeName(): string }
+      const args = { attributeName: node.getAttributeName(), nodeType: node.nodeType }
+      validateAttributeMetadata(args)
+      return { op: 'AttributeNode', args }
+    },
+  },
 })
 
 // InputNode.deserialize trusts nodeType and precision. Limit explicit types to
@@ -74,10 +86,25 @@ const validateLiteralMetadata = (op: string, args: unknown) => {
   }
 }
 
+const attributeNodeTypes = new Set(Object.values(literalNodeTypes).flat())
+const validateAttributeMetadata = (args: unknown) => {
+  const data = record(args)
+  if (typeof data.attributeName !== 'string' || !data.attributeName.trim()) {
+    throw new Error('Invalid AttributeNode attributeName: expected a nonempty string')
+  }
+  // Missing/null types infer from geometry. Conversion unions and non-value
+  // types are not supported AttributeNode constructor types.
+  if (data.nodeType !== null && data.nodeType !== undefined &&
+    (typeof data.nodeType !== 'string' || !attributeNodeTypes.has(data.nodeType))) {
+    throw new Error('Invalid AttributeNode nodeType: expected a supported value type')
+  }
+}
+
 export const createEditorNodeResolver = () => {
   const defaults = createDefaultNodeResolver()
   return (op: string, args?: JsonValue) => {
     if (op === 'ConstNode' || op === 'UniformNode') validateLiteralMetadata(op, args)
+    if (op === 'AttributeNode') validateAttributeMetadata(args)
     if (!['VarNode', 'ConvertNode', 'JoinNode', 'SplitNode'].includes(op)) return defaults(op, args)
     const data = record(args)
     const placeholder = new ConstNode(0)
