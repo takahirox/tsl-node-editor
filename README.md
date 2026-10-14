@@ -31,6 +31,16 @@ npm run dev
 - Development follows a vibe-coding approach. Pull requests are not accepted.
 - Issue reports and feature requests are welcome and appreciated.
 
+## Collaboration guidance
+
+For Issue authors and maintainer-authorized development (the public PR policy above still applies):
+
+- [Issue template](.github/ISSUE_TEMPLATE/issue.md)
+- [Pull request template](.github/pull_request_template.md)
+- [Development flow and English collaboration-language policy](docs/development-flow.md)
+- [Review and merge guidelines](docs/review-guidelines.md)
+- [AI agent entry point](AGENTS.md)
+
 ## License
 
 MIT
