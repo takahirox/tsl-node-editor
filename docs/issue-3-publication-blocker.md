@@ -53,6 +53,14 @@ Verified in the assigned worktree:
   errors. This verifies rendering behavior, not a subjective visual comparison.
 - Script syntax and `git diff --check` pass.
 
+The later fallback-fix checkpoint reports `npm ci`, build and lint passing, plus
+199 editor integration checks. It adds operation-specific required-input and
+reference validation for MathNode/OperatorNode before applying imported TSL
+materials. Malformed graphs preserve ordinary PBR values and emit diagnostics;
+valid unary operations and both atan forms retain their round-trips. The six
+publication probes and six browser UI checks above are evidence from the earlier
+implementation checkpoint; browser checks were not rerun for the fallback fix.
+
 The publication blocker and missing editor implementation are resolved. Optional
 visual comparison on a physical GPU was not performed. Real Basis-worker
 transcoding is not covered by the uncompressed KTX2 fixture; the bundled Basis
@@ -61,6 +69,7 @@ transcoder assets match the locked r186 assets byte-for-byte.
 ## Required follow-up
 
 Keep Issue #3 open. The required GitHub Pages import/export verification remains
-pending until the actual post-merge deployment. This local fix node does not
-push, merge, publish, edit the remote PR description or verify deployment.
+pending until the actual post-merge deployment. Publication updates the existing
+draft PR with the fallback fix and current validation evidence; it does not merge
+or verify deployment.
 The updated reviewable PR body is in [issue-3-pr-body.md](issue-3-pr-body.md).
