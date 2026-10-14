@@ -74,7 +74,7 @@ export const createEditorNodeResolver = () => {
   }
 }
 
-// Required MathNode inputs in the pinned r186 API. Other methods are unary;
+// MathNode input arities in the pinned r186 API. Other methods are unary;
 // atan accepts an optional second input. clamp's TSL defaults are serialized as
 // explicit nodes, so all three inputs are still required in the file graph.
 const binaryMathMethods = new Set(['equals', 'min', 'max', 'step', 'reflect', 'distance', 'difference', 'dot', 'cross', 'pow', 'transformDirection'])
@@ -98,10 +98,16 @@ export const validateEditorNodeLinks = (extension: ExtensionDefinition) => {
         required.push('bNode')
       }
       if (definition.op === 'MathNode' && ternaryMathMethods.has(operation)) required.push('cNode')
-      const inputs = definition.op === 'MathNode' ? ['aNode', 'bNode', 'cNode'] : ['aNode', 'bNode']
-      for (const input of inputs) {
+      const allowed = [...required]
+      if (definition.op === 'MathNode' && operation === 'atan') allowed.push('bNode')
+      for (const input of Object.keys(definition.links ?? {})) {
+        if (!allowed.includes(input)) {
+          throw new Error(`Invalid ${definition.op} "${operation}" ${input} input: unexpected link property`)
+        }
+      }
+      for (const input of allowed) {
         const value = definition.links?.[input]
-        if ((required.includes(input) || value != null) && !isNodeRef(value)) {
+        if ((required.includes(input) || Object.hasOwn(definition.links ?? {}, input)) && !isNodeRef(value)) {
           throw new Error(`Invalid ${definition.op} "${operation}" ${input} input: expected a node reference`)
         }
       }

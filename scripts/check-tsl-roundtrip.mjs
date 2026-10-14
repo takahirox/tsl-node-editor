@@ -244,8 +244,9 @@ for (const extension of invalidExtensions) {
 }
 console.log('PASS glTF/GLB invalid version/type/graph/op/cycle/adapters: diagnostics and complete ordinary fallback')
 
-// Corrupt real exported operations so resolver placeholders cannot hide missing
-// inputs. Include unary operators and both atan forms to avoid rejecting valid graphs.
+// Corrupt real exported operations so placeholders and generic link assignment
+// cannot hide missing inputs, extra operands or overwritten operation metadata.
+// Include unary operators and both atan forms to avoid rejecting valid graphs.
 const operationCases = [
   ['addition', () => add(uniform(0.2), uniform(0.4)), ['aNode', 'bNode']],
   ['logical not', () => not(uniform(false)), ['aNode']],
@@ -279,6 +280,15 @@ for (const [label, createNode, requiredInputs] of operationCases) {
       if (requiredInputs.includes(slot)) mutations.push({ slot, apply: (node) => { delete node.links[slot] } })
       for (const value of [{}, [], { nested: operation.links[slot] }]) {
         mutations.push({ slot, apply: (node) => { node.links[slot] = value } })
+      }
+    }
+    // A valid node reference is still invalid in an extra operand or metadata
+    // property. Reproduce sin(a, b) and links.method overwriting the method name.
+    const allowedInputs = [...requiredInputs]
+    if (label.includes('atan')) allowedInputs.push('bNode')
+    for (const slot of ['aNode', 'bNode', 'cNode', 'method', 'op', 'unknownInput']) {
+      if (!allowedInputs.includes(slot)) {
+        mutations.push({ slot, apply: (node) => { node.links[slot] = structuredClone(operation.links.aNode) } })
       }
     }
     // Optional inputs must also be node references when supplied.

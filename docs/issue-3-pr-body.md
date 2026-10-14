@@ -12,9 +12,9 @@ preview cloning and re-export. Loader failures report useful toast diagnostics
 and retain the ordinary glTF material. KTX2 loading remains registered.
 Unsupported nodes fail export instead of silently producing incomplete data.
 MathNode and OperatorNode inputs are validated before applying a TSL material;
-malformed or missing references preserve the ordinary material and report the
-operation and input in the diagnostic. Valid unary operations and both atan
-forms continue to round-trip.
+malformed or missing references, extra operands and unknown link properties
+preserve the ordinary material and report the operation and input in the
+diagnostic. Valid unary operations and both atan forms continue to round-trip.
 
 See [support and regression checks](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/tsl-gltf.md) and
 [publication/migration evidence](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/issue-3-publication-blocker.md) for limits
@@ -30,27 +30,23 @@ the [maintainer's Issue update](https://github.com/takahirox/tsl-node-editor/iss
 
 ## Validation
 
-The implementation and latest fallback-fix checkpoints report these results:
+The latest operation-validation fix was checked in the assigned worktree:
 
 - `npm ci`, `npm run build` and `npm run lint` pass with the migrated lockfile;
   lint retains 20 existing warnings and Vite retains its large-chunk advisory.
-- Six publication probes passed at the implementation checkpoint. The latest
-  fallback-fix checkpoint passed 199 editor integration checks, covering
+- Six publication probes and 273 editor integration checks pass, covering
   Basic/Standard/Physical glTF/GLB round-trips, preview clones/pins,
   shared graphs, editor adapters, mixed materials, ordinary geometry/PBR/physical
   extensions, actual uncompressed KTX2 imports, complete invalid-extension
-  fallback in both formats, malformed MathNode/OperatorNode inputs, valid unary
-  operations and both atan forms, and unsupported-node export errors.
+  fallback in both formats, malformed MathNode/OperatorNode references, extra
+  operands and unknown link properties, valid unary operations and both atan
+  forms, and unsupported-node export errors.
 - `npm run check:tsl:browser`: six real editor UI round-trips pass in dedicated
   headless Chrome with WebGPU/SwiftShader, including rendered preview, text
   export and GLB download; no uncaught/render validation errors were captured.
-  These browser checks passed at the implementation checkpoint, before the
-  latest fallback fix, and were not rerun for that fix.
+  These browser checks passed at the implementation checkpoint and were not
+  rerun for the operation-validation fixes.
 - Script syntax and whitespace checks pass.
-
-Publication checks: script syntax and `git diff --check` pass. Runtime results
-above are inherited from the specified upstream checkpoints; application and
-browser checks were not rerun for this description-only publication update.
 
 Optional visual comparison on physical GPU hardware was not performed.
 Uncompressed KTX2 parsing and registration are covered; Basis-worker transcoding
@@ -59,7 +55,7 @@ JavaScript preview limitations are documented.
 
 ## Related Issues
 
-Closes #3
+Related to #3
 
 Keep this PR draft and unmerged during review. Issue #3 remains open; its required
 post-deployment verification is pending and must still be recorded after deployment.

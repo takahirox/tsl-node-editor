@@ -59,12 +59,13 @@ npm run lint
 npm run check:tsl
 ```
 
-`check:tsl` runs six locked-package publication probes and 199 checks against the
+`check:tsl` runs six locked-package publication probes and 273 checks against the
 same editor import/export/preview functions used by `App.tsx`. It generates
 fixtures in memory, uses real Three.js loaders/exporters/plugins, and shims only
 browser file I/O primitives. Operation regressions cover missing and malformed
-MathNode/OperatorNode inputs, preserved ordinary PBR values and useful diagnostics,
-as well as valid unary operations and both atan forms. The KTX2 fixture uses the
+MathNode/OperatorNode references, extra operands and unknown link properties,
+preserved ordinary PBR values and useful diagnostics, as well as valid unary
+operations and both atan forms. The KTX2 fixture uses the
 real KTX2Loader and checks
 pixel data/dependency identity for ordinary and reconstructed TSL materials. It
 uses an uncompressed 1x1 texture and does not exercise Basis-worker transcoding.
