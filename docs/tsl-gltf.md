@@ -33,7 +33,9 @@ node types; imports require nonempty attribute names and supported value types,
 with missing/null types retaining geometry-based inference.
 The editor supplies paired **VarNode**, **ConvertNode**,
 **JoinNode** and **SplitNode** adapters, needed by r186's public constructors and
-swizzles. Adapter arguments, required links and allowed link properties are
+swizzles. JoinNode requires a concrete value type or a missing/null type for
+inference; conversion unions are supported only by ConvertNode. Adapter
+arguments, required links and allowed link properties are
 validated before publishing an imported material replacement. Literal and
 attribute nodes reject all links so file data cannot overwrite their values.
 Const/Uniform literal constructor metadata also requires supported value types,
@@ -66,7 +68,7 @@ npm run lint
 npm run check:tsl
 ```
 
-`check:tsl` runs six locked-package publication probes and 615 checks against the
+`check:tsl` runs six locked-package publication probes and 651 checks against the
 same editor import/export/preview functions used by `App.tsx`. It generates
 fixtures in memory, uses real Three.js loaders/exporters/plugins, and shims only
 browser file I/O primitives. Operation regressions cover missing and malformed
@@ -81,6 +83,9 @@ and re-exports.
 Attribute metadata regressions cover explicit/inferred shader types through
 import, preview pins and re-export, and reject malformed names/types with ordinary
 PBR and parser-cache preservation in both formats.
+JoinNode regressions reject conversion unions and malformed type metadata on
+import/export, preserving ordinary PBR values and parser-cache materials with
+diagnostics; valid inferred/explicit joins and ConvertNode unions round-trip.
 The KTX2 fixture uses the
 real KTX2Loader and checks
 pixel data/dependency identity for ordinary and reconstructed TSL materials. It
