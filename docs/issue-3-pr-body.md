@@ -12,11 +12,21 @@ preview cloning and re-export. Loader failures report useful toast diagnostics
 and retain the ordinary glTF material. KTX2 loading remains registered.
 Unsupported nodes fail export instead of silently producing incomplete data.
 
-See [support and regression checks](docs/tsl-gltf.md) and
-[publication/migration evidence](docs/issue-3-publication-blocker.md) for limits
+See [support and regression checks](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/tsl-gltf.md) and
+[publication/migration evidence](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/issue-3-publication-blocker.md) for limits
 and reproduction instructions. The former v0.4.0 publication blocker is resolved.
 
+## Outcome
+
+Supported Basic, Standard and Physical NodeMaterials now export Draft v2.0
+glTF/GLB with their material types and complete node graphs, and re-import for
+preview and re-export. Invalid or unsupported TSL extensions retain the ordinary
+glTF material and report diagnostics. Both packages use v0.4.1 as requested in
+the [maintainer's Issue update](https://github.com/takahirox/tsl-node-editor/issues/3#issuecomment-6171268446).
+
 ## Validation
+
+The implementation checkpoint reports the following checks as passing:
 
 - `npm ci`, `npm run build` and `npm run lint` pass with the migrated lockfile;
   lint retains 20 existing warnings and Vite retains its large-chunk advisory.
@@ -30,6 +40,10 @@ and reproduction instructions. The former v0.4.0 publication blocker is resolved
   export and GLB download; no uncaught/render validation errors were captured.
 - Script syntax and whitespace checks pass.
 
+Publication checks: script syntax and `git diff --check` pass. Application and
+browser checks above were performed at the implementation checkpoint and were
+not rerun for this description-only publication update.
+
 Optional visual comparison on physical GPU hardware was not performed.
 Uncompressed KTX2 parsing and registration are covered; Basis-worker transcoding
 is not exercised by these fixtures. Unsupported graph classes and generated
@@ -37,8 +51,10 @@ JavaScript preview limitations are documented.
 
 ## Related Issues
 
-Refs #3. Keep the Issue open until all acceptance criteria, including the required
-post-deployment check, are satisfied, as requested in the maintainer's update.
+Closes #3
+
+Keep this PR draft and unmerged during review. Issue #3 remains open; its required
+post-deployment verification is pending and must still be recorded after deployment.
 
 ## Required post-merge verification
 
