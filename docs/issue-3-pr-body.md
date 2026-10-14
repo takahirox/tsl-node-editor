@@ -12,23 +12,21 @@ Remaining scope: confirm corrected compatible published packages, align dependen
 
 ## Validation
 
-Reported by the latest upstream fix checkpoint (not rerun during this publication):
+Rechecked during the latest local revision:
+
 - Registry version lists still end at 0.4.0, and both artifact integrity hashes match the recorded blocker.
 - All six isolated runtime probes using Three.js 0.186.1 fail: Basic, Standard and Physical exports emit version "1.0" without `materialType`, and valid v2.0 imports return ordinary materials. These failures reproduce the blocker; they are not passing migration tests.
-- `npm ci`, `npm run build`, and `npm run lint` pass with the existing locked dependencies; lint retains 20 warnings. These checks do not validate the requested migrated packages.
+- `node --check scripts/check-tsl-publication.mjs` and worktree/staged whitespace checks pass.
 
-Verified for this PR update:
-- `node --check scripts/check-tsl-publication.mjs`: passed.
-- Whitespace checks for the full diff from base `b86a589` and the current worktree: passed.
-- The previous PR head `db33374f00f8299508f2227431a958e6e2882fa1` is an ancestor of the assigned checkpoint `f9e45a3427f6374fa393c2911e7b025b3150b746`, and their file trees are identical. This publication updates the description artifact and publishes the subsequent checkpoints; no additional application changes were made.
+The preceding review reports that `npm ci`, `npm run build`, and `npm run lint` pass with the existing locked dependencies; lint retains 20 warnings. These checks do not validate the requested migrated packages. They were not rerun for this documentation-only revision.
 
-Application and registry checks were not rerun during publication. An earlier exploratory r186 build failed on TSL API/type changes, and the dependency experiment was reverted. Full migration, ordinary glTF/KTX2 preservation, glTF/GLB round-trips, shared graphs, and fallback/error acceptance remain unverified. Optional WebGPU visual comparison was not performed. The blocker document's checkpoint validation section records the earlier lint failure; the later lint fixes and passing results above supersede that result.
+An earlier exploratory r186 build failed on TSL API/type changes, and the dependency experiment was reverted. Full migration, ordinary glTF/KTX2 preservation, glTF/GLB round-trips, shared graphs, and fallback/error acceptance remain unverified. Optional WebGPU visual comparison was not performed. The blocker document's checkpoint validation section records the earlier lint failure; the later lint fixes and passing review results supersede that result.
 
 ## Related Issues
 
-Closes #3
+Related to #3; this partial work leaves the Issue open.
 
-The closing link is included as required by the publication workflow. The current implementation is partial: keep the PR draft and Issue #3 open until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint; the closing link does not establish completion.
+Keep the PR draft until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint.
 
 ## Required post-merge verification
 
