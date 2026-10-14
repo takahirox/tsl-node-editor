@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { BoxGeometry, Color, Mesh, MeshStandardMaterial, MeshPhysicalMaterial } from 'three'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial } from 'three/webgpu'
-import { uniform, positionLocal, texture, uv, atan, float, vec3, color, add, not, bitNot, sin, min, mix, clamp } from 'three/tsl'
+import { uniform, positionLocal, attribute, texture, uv, atan, float, vec3, color, add, not, bitNot, sin, min, mix, clamp } from 'three/tsl'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { createDefaultContainer, write, VK_FORMAT_R8G8B8A8_UNORM } from 'three/addons/libs/ktx-parse.module.js'
 import { Texture } from 'three'
@@ -243,6 +243,67 @@ for (const extension of invalidExtensions) {
 }
 }
 console.log('PASS glTF/GLB invalid version/type/graph/op/cycle/adapters: diagnostics and complete ordinary fallback')
+
+// Every supported class must restrict link assignment to its actual node inputs.
+// Use valid references to isolate metadata overwrites from reference/cycle errors.
+const linkedMaterial = new MeshPhysicalNodeMaterial({
+  color: 0x234567, roughness: 0.3, metalness: 0.7, emissive: 0x123456,
+  opacity: 0.8, transparent: true, clearcoat: 0.6, transmission: 0.3, ior: 1.7,
+})
+const linkedUniform = uniform(0.6)
+linkedMaterial.colorNode = color(vec3(linkedUniform, float(0.4), linkedUniform))
+linkedMaterial.opacityNode = linkedMaterial.colorNode.r
+linkedMaterial.positionNode = attribute('position', 'vec3')
+const linkedAsset = await exportEditorMeshes([new Mesh(geometry, linkedMaterial)], false)
+const linkedExtension = linkedAsset.materials[0].extensions[extensionName]
+const unexpectedLinkCases = [
+  ['VarNode', ['name', 'readOnly', 'intent', 'unknownInput']],
+  ['ConvertNode', ['convertTo', 'unknownInput']],
+  ['JoinNode', ['nodeType', 'unknownInput']],
+  ['SplitNode', ['components', 'unknownInput']],
+  ['ConstNode', ['value', 'valueType', 'nodeType', 'precision', 'node', 'unknownInput']],
+  ['UniformNode', ['value', 'valueType', 'nodeType', 'precision', 'node', 'unknownInput']],
+  ['AttributeNode', ['attributeName', 'nodeType', 'unknownInput']],
+]
+for (const binary of [false, true]) {
+  const diagnostics = []
+  const valid = meshesOf(await load(binary ? toGLB(linkedAsset) : linkedAsset, diagnostics))[0].material
+  assert.equal(valid.type, linkedMaterial.type)
+  assert.deepEqual(diagnostics, [])
+  const reexport = await exportEditorMeshes([new Mesh(geometry, valid)], false)
+  assert.deepEqual(reexport.materials[0].extensions[extensionName], linkedExtension)
+  checks++
+  for (const [op, slots] of unexpectedLinkCases) {
+    const nodeId = Object.keys(linkedExtension.nodes).find((id) => linkedExtension.nodes[id].op === op)
+    assert.ok(nodeId, `Fixture must contain ${op}`)
+    const referenceId = Object.keys(linkedExtension.nodes).find((id) => id !== nodeId && ['ConstNode', 'UniformNode'].includes(linkedExtension.nodes[id].op))
+    assert.ok(referenceId)
+    for (const slot of slots) {
+      const fixture = structuredClone(linkedAsset)
+      const node = fixture.materials[0].extensions[extensionName].nodes[nodeId]
+      node.links = { ...node.links, [slot]: { $ref: referenceId } }
+      const errors = []
+      const gltf = await load(binary ? toGLB(fixture) : fixture, errors)
+      const loaded = meshesOf(gltf)[0].material
+      const cached = await gltf.parser.getDependency('material', 0)
+      for (const material of [loaded, cached]) {
+        assert.equal(material.type, 'MeshPhysicalMaterial', `${op}.links.${slot} must fall back`)
+        assert.equal(material.isNodeMaterial, undefined)
+        for (const key of ['colorNode', 'opacityNode', 'positionNode']) assert.equal(material[key], undefined)
+        for (const key of ['roughness', 'metalness', 'opacity', 'transparent', 'clearcoat', 'transmission', 'ior']) {
+          assert.equal(material[key], linkedMaterial[key])
+        }
+        for (const key of ['color', 'emissive']) assert.ok(material[key].equals(linkedMaterial[key]))
+      }
+      assert.equal(errors.length, 1)
+      assert.ok(errors[0].includes(op), errors[0])
+      assert.ok(errors[0].includes(slot), errors[0])
+      assert.match(errors[0], /unexpected link property/)
+      checks++
+    }
+  }
+}
+console.log('PASS glTF/GLB wrapper/literal/attribute unexpected links: complete ordinary PBR fallback with diagnostics')
 
 // Corrupt real exported operations so placeholders and generic link assignment
 // cannot hide missing inputs, extra operands or overwritten operation metadata.

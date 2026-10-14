@@ -30,8 +30,9 @@ The upstream serializer/resolver pair supports shared TSL node objects,
 Const/Uniform numeric, boolean, color, vector and matrix literals, Attribute,
 Math and Operator nodes. The editor supplies paired **VarNode**, **ConvertNode**,
 **JoinNode** and **SplitNode** adapters, needed by r186's public constructors and
-swizzles. Adapter arguments and required links are validated before publishing
-an imported material replacement.
+swizzles. Adapter arguments, required links and allowed link properties are
+validated before publishing an imported material replacement. Literal and
+attribute nodes reject all links so file data cannot overwrite their values.
 
 Texture sampling/buffer nodes, Fn/ShaderCall/function/closure nodes, noise nodes
 and other unadapted classes cannot currently be exported as glTF graphs.
@@ -59,13 +60,16 @@ npm run lint
 npm run check:tsl
 ```
 
-`check:tsl` runs six locked-package publication probes and 273 checks against the
+`check:tsl` runs six locked-package publication probes and 325 checks against the
 same editor import/export/preview functions used by `App.tsx`. It generates
 fixtures in memory, uses real Three.js loaders/exporters/plugins, and shims only
 browser file I/O primitives. Operation regressions cover missing and malformed
 MathNode/OperatorNode references, extra operands and unknown link properties,
 preserved ordinary PBR values and useful diagnostics, as well as valid unary
-operations and both atan forms. The KTX2 fixture uses the
+operations and both atan forms. Wrapper, literal and attribute regressions
+reject unexpected links (including constructor metadata overwrites) in both
+glTF and GLB, preserving the complete ordinary material and parser cache.
+The KTX2 fixture uses the
 real KTX2Loader and checks
 pixel data/dependency identity for ordinary and reconstructed TSL materials. It
 uses an uncompressed 1x1 texture and does not exercise Basis-worker transcoding.

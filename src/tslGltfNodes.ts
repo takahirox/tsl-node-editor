@@ -90,25 +90,37 @@ export const validateEditorNodeLinks = (extension: ExtensionDefinition) => {
       typeof reference.$ref === 'string' && Object.hasOwn(extension.nodes, reference.$ref)
   }
   for (const definition of Object.values(extension.nodes)) {
+    let allowed: string[] = []
+    const required: string[] = []
+    let label = definition.op
     if (definition.op === 'MathNode' || definition.op === 'OperatorNode') {
       const args = record(definition.args)
       const operation = String(definition.op === 'MathNode' ? args.method : args.op)
-      const required = ['aNode']
+      label += ` "${operation}"`
+      required.push('aNode')
       if (definition.op === 'OperatorNode' ? !['!', '~'].includes(operation) : binaryMathMethods.has(operation) || ternaryMathMethods.has(operation)) {
         required.push('bNode')
       }
       if (definition.op === 'MathNode' && ternaryMathMethods.has(operation)) required.push('cNode')
-      const allowed = [...required]
+      allowed = [...required]
       if (definition.op === 'MathNode' && operation === 'atan') allowed.push('bNode')
-      for (const input of Object.keys(definition.links ?? {})) {
-        if (!allowed.includes(input)) {
-          throw new Error(`Invalid ${definition.op} "${operation}" ${input} input: unexpected link property`)
-        }
+    } else if (['VarNode', 'ConvertNode', 'SplitNode'].includes(definition.op)) {
+      allowed = ['node']
+    } else if (definition.op === 'JoinNode') {
+      allowed = ['nodes']
+    }
+    // Literal/attribute/shared nodes have no links. Only explicit input slots
+    // may be assigned; links must never overwrite validated constructor data.
+    for (const input of Object.keys(definition.links ?? {})) {
+      if (!allowed.includes(input)) {
+        throw new Error(`Invalid ${label} ${input} input: unexpected link property`)
       }
+    }
+    if (definition.op === 'MathNode' || definition.op === 'OperatorNode') {
       for (const input of allowed) {
         const value = definition.links?.[input]
         if ((required.includes(input) || Object.hasOwn(definition.links ?? {}, input)) && !isNodeRef(value)) {
-          throw new Error(`Invalid ${definition.op} "${operation}" ${input} input: expected a node reference`)
+          throw new Error(`Invalid ${label} ${input} input: expected a node reference`)
         }
       }
     }
