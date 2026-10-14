@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { BoxGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMaterial, MeshPhysicalMaterial } from 'three'
 import NodeBuilder from 'three/src/nodes/core/NodeBuilder.js'
+import JoinNode from 'three/src/nodes/utils/JoinNode.js'
+import ConvertNode from 'three/src/nodes/utils/ConvertNode.js'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial } from 'three/webgpu'
 import { uniform, positionLocal, attribute, texture, uv, atan, float, vec3, color, add, not, bitNot, sin, min, mix, clamp } from 'three/tsl'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
@@ -306,6 +308,74 @@ for (const binary of [false, true]) {
   }
 }
 console.log('PASS glTF/GLB wrapper/literal/attribute unexpected links: complete ordinary PBR fallback with diagnostics')
+
+// Conversion unions are resolved by ConvertNode, but would be emitted verbatim
+// as invalid shader constructors by JoinNode. Use three valid scalar references
+// so only the constructor type can cause the import/export rejection.
+const joinOriginal = linkedMaterial.clone()
+joinOriginal.colorNode = new ConvertNode(new JoinNode([uniform(0.2), uniform(0.4), uniform(0.6)], 'vec3'), 'float|vec3')
+joinOriginal.opacityNode = new ConvertNode(uniform(0.8), 'vec3|float')
+const joinAsset = await exportEditorMeshes([new Mesh(geometry, joinOriginal)], false)
+const joinExtension = joinAsset.materials[0].extensions[extensionName]
+const joinId = Object.keys(joinExtension.nodes).find((id) => joinExtension.nodes[id].op === 'JoinNode')
+assert.ok(joinId)
+const invalidJoinTypes = ['vec3|float', 'float|vec3', 'vec3|vec3', 'banana', '', 'texture', 'void', 42, false, {}, []]
+for (const binary of [false, true]) {
+  for (const nodeType of [undefined, null, 'vec3', 'bvec3', 'ivec3', 'uvec3', 'color']) {
+    const original = joinOriginal.clone()
+    original.colorNode = new ConvertNode(new JoinNode(joinOriginal.colorNode.node.nodes, nodeType ?? null), 'float|vec3')
+    const exported = await exportEditorMeshes([new Mesh(geometry, original)], binary)
+    assert.equal(jsonOf(exported).materials[0].extensions[extensionName].nodes[joinId].args.nodeType, nodeType ?? null)
+    const fixture = structuredClone(joinAsset)
+    fixture.materials[0].extensions[extensionName].nodes[joinId].args = nodeType === undefined ? {} : { nodeType }
+    const errors = []
+    const gltf = await load(binary ? toGLB(fixture) : fixture, errors)
+    const mesh = meshesOf(gltf)[0]
+    const imported = mesh.material
+    assert.equal(imported.type, joinOriginal.type)
+    assert.equal(imported.colorNode.node.nodeType, nodeType ?? null)
+    assert.equal(imported.colorNode.node.getNodeType(new NodeBuilder(mesh)), nodeType === 'color' ? 'vec3' : nodeType ?? 'vec3')
+    assert.equal(imported.colorNode.convertTo, 'float|vec3')
+    assert.equal(imported.colorNode.getNodeType(new NodeBuilder(mesh)), 'vec3')
+    assert.equal(imported.opacityNode.convertTo, 'vec3|float')
+    assert.equal(imported.opacityNode.getNodeType(new NodeBuilder(mesh)), 'float')
+    assert.equal((await gltf.parser.getDependency('material', 0)).colorNode, imported.colorNode)
+    const preview = cloneImportedTSLMaterial(imported)
+    const reexport = await exportEditorMeshes([new Mesh(mesh.geometry, preview)], binary)
+    assert.deepEqual(jsonOf(reexport).materials[0].extensions[extensionName], jsonOf(exported).materials[0].extensions[extensionName])
+    const reimported = meshesOf(await load(reexport, errors))[0]
+    assert.equal(reimported.material.colorNode.getNodeType(new NodeBuilder(reimported)), 'vec3')
+    assert.equal(reimported.material.opacityNode.getNodeType(new NodeBuilder(reimported)), 'float')
+    assert.deepEqual(errors, [])
+    checks++
+  }
+  for (const nodeType of invalidJoinTypes) {
+    const fixture = structuredClone(joinAsset)
+    fixture.materials[0].extensions[extensionName].nodes[joinId].args.nodeType = nodeType
+    const errors = []
+    const gltf = await load(binary ? toGLB(fixture) : fixture, errors)
+    const loaded = meshesOf(gltf)[0].material
+    const cached = await gltf.parser.getDependency('material', 0)
+    for (const material of [loaded, cached]) {
+      assert.equal(material.type, 'MeshPhysicalMaterial')
+      assert.equal(material.isNodeMaterial, undefined)
+      for (const key of ['colorNode', 'opacityNode', 'positionNode']) assert.equal(material[key], undefined)
+      for (const key of ['roughness', 'metalness', 'opacity', 'transparent', 'clearcoat', 'transmission', 'ior']) {
+        assert.equal(material[key], joinOriginal[key])
+      }
+      for (const key of ['color', 'emissive']) assert.ok(material[key].equals(joinOriginal[key]))
+    }
+    assert.equal(errors.length, 1)
+    assert.match(errors[0], /JoinNode nodeType.*concrete/)
+    const fallbackExport = await exportEditorMeshes([new Mesh(geometry, loaded)], binary)
+    assert.equal(jsonOf(fallbackExport).materials[0].extensions?.[extensionName], undefined)
+    const invalidMaterial = joinOriginal.clone()
+    invalidMaterial.colorNode = new JoinNode(joinOriginal.colorNode.node.nodes, nodeType)
+    await assert.rejects(exportEditorMeshes([new Mesh(geometry, invalidMaterial)], binary), /JoinNode nodeType.*concrete/)
+    checks++
+  }
+}
+console.log('PASS glTF/GLB JoinNode: inferred/concrete types and ConvertNode unions round-trip; malformed types reject export and preserve ordinary PBR/cache with diagnostics')
 
 // InputNode.deserialize accepts arbitrary constructor metadata. Check supported
 // literal shapes separately, then exercise atomic fallback through the loader.
