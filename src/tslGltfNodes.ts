@@ -15,10 +15,19 @@ const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid editor node arguments')
   return value as Record<string, unknown>
 }
-const nodeType = (value: unknown) => {
+const conversionType = (value: unknown) => {
   if (value === null || value === undefined) return null
   if (typeof value !== 'string' || !/^(float|bool|int|uint|color|[biu]?vec[234]|mat[234])(\|(float|bool|int|uint|color|[biu]?vec[234]|mat[234]))*$/.test(value)) {
     throw new Error('Unsupported editor node conversion type')
+  }
+  return value
+}
+// JoinNode emits this type directly as a shader constructor. Only ConvertNode
+// resolves conversion unions; missing/null join types infer from the inputs.
+const joinNodeType = (value: unknown) => {
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'string' || !/^(float|bool|int|uint|color|[biu]?vec[234]|mat[234])$/.test(value)) {
+    throw new Error('Invalid JoinNode nodeType: expected a supported concrete value type')
   }
   return value
 }
@@ -33,13 +42,13 @@ const serializeWrapper = (op: string, value: unknown): NodeExport => {
     return { op, args: { name: node.name as string | null, readOnly: Boolean(node.readOnly), intent: Boolean(node.intent) }, links: { node: { node: node.node } } }
   }
   if (op === 'ConvertNode') {
-    const convertTo = nodeType(node.convertTo)
+    const convertTo = conversionType(node.convertTo)
     if (!convertTo) throw new Error('Missing editor conversion type')
     return { op, args: { convertTo }, links: { node: { node: node.node } } }
   }
   if (op === 'SplitNode') return { op, args: { components: components(node.components) }, links: { node: { node: node.node } } }
   if (!Array.isArray(node.nodes) || !node.nodes.length) throw new Error('Empty editor vector join')
-  return { op, args: { nodeType: nodeType(node.nodeType) }, links: { nodes: node.nodes.map((child) => ({ node: child })) } }
+  return { op, args: { nodeType: joinNodeType(node.nodeType) }, links: { nodes: node.nodes.map((child) => ({ node: child })) } }
 }
 
 export const createEditorNodeSerializer = () => createDefaultNodeSerializer({
@@ -116,7 +125,7 @@ export const createEditorNodeResolver = () => {
       return node
     }
     if (op === 'ConvertNode') {
-      const convertTo = nodeType(data.convertTo)
+      const convertTo = conversionType(data.convertTo)
       if (!convertTo) throw new Error('Missing editor conversion type')
       return new ConvertNode(placeholder, convertTo)
     }
@@ -126,7 +135,7 @@ export const createEditorNodeResolver = () => {
       return node
     }
     const node = new JoinNode([])
-    node.nodeType = nodeType(data.nodeType)
+    node.nodeType = joinNodeType(data.nodeType)
     return node
   }
 }
