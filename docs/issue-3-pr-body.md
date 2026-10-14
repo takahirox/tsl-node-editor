@@ -26,9 +26,9 @@ An earlier exploratory r186 build failed on TSL API/type changes, and the depend
 
 ## Related Issues
 
-Closes #3
+Related to #3
 
-The closing link is included as required by the publication workflow. The current implementation is partial: keep the PR draft and Issue #3 open until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint; the closing link does not establish completion.
+The current implementation is partial: keep the PR draft and Issue #3 open until the remaining migration and pre-merge acceptance checks are complete. Do not merge this checkpoint.
 
 ## Required post-merge verification
 
