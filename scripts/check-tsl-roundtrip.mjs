@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
-import { BoxGeometry, Color, Mesh, MeshStandardMaterial, MeshPhysicalMaterial } from 'three'
+import { BoxGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMaterial, MeshPhysicalMaterial } from 'three'
+import NodeBuilder from 'three/src/nodes/core/NodeBuilder.js'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial } from 'three/webgpu'
 import { uniform, positionLocal, attribute, texture, uv, atan, float, vec3, color, add, not, bitNot, sin, min, mix, clamp } from 'three/tsl'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
@@ -395,6 +396,91 @@ for (const binary of [false, true]) {
   }
 }
 console.log('PASS glTF/GLB literal constructor metadata: valid imports/re-exports and ordinary PBR/cache fallback with diagnostics')
+
+// A scalar view of a vector attribute must not turn into an inferred vec3.
+// Exercise real shader type inference as well as import, preview pins and export.
+const attributeGeometry = geometry.clone()
+attributeGeometry.setAttribute('color', new Float32BufferAttribute(
+  Array.from({ length: attributeGeometry.attributes.position.count }, () => [0.2, 0.6, 0.8]).flat(), 3,
+))
+const attributeOriginal = new MeshPhysicalNodeMaterial({
+  color: 0x234567, roughness: 0.3, metalness: 0.7, emissive: 0x123456,
+  opacity: 0.8, transparent: true, clearcoat: 0.6, transmission: 0.3, ior: 1.7,
+})
+attributeOriginal.colorNode = attribute('color', 'float')
+const attributeAsset = await exportEditorMeshes([new Mesh(attributeGeometry, attributeOriginal)], false)
+const attributeExtension = attributeAsset.materials[0].extensions[extensionName]
+const attributeId = attributeExtension.entrypoints.colorNode
+assert.deepEqual(attributeExtension.nodes[attributeId], {
+  op: 'AttributeNode', args: { attributeName: 'color', nodeType: 'float' },
+})
+const validAttributeTypes = [
+  'float', 'bool', 'int', 'uint', 'color',
+  'vec2', 'vec3', 'vec4', 'bvec2', 'bvec3', 'bvec4',
+  'ivec2', 'ivec3', 'ivec4', 'uvec2', 'uvec3', 'uvec4', 'mat2', 'mat3', 'mat4',
+]
+const invalidAttributeArgs = [
+  ...[42, 'banana', '', {}, [], false, 'float|vec3', 'texture', 'void'].map((nodeType) =>
+    ['nodeType', { attributeName: 'color', nodeType }]),
+  ...[undefined, null, {}, [], 42, false, '', '   '].map((attributeName) =>
+    ['attributeName', { ...(attributeName === undefined ? {} : { attributeName }), nodeType: 'float' }]),
+]
+for (const binary of [false, true]) {
+  // Test the actual exporter in both formats, independently of edited fixtures.
+  const exported = await exportEditorMeshes([new Mesh(attributeGeometry, attributeOriginal)], binary)
+  assert.deepEqual(jsonOf(exported).materials[0].extensions[extensionName], attributeExtension)
+  const fixtureFor = (args) => {
+    const fixture = structuredClone(attributeAsset)
+    fixture.materials[0].extensions[extensionName].nodes[attributeId].args = args
+    return binary ? toGLB(fixture) : fixture
+  }
+  for (const nodeType of [undefined, null, ...validAttributeTypes]) {
+    const args = { attributeName: 'color', ...(nodeType === undefined ? {} : { nodeType }) }
+    const errors = []
+    const gltf = await load(fixtureFor(args), errors)
+    const mesh = meshesOf(gltf)[0]
+    const imported = mesh.material
+    assert.equal(imported.type, attributeOriginal.type)
+    assert.equal(imported.colorNode.getAttributeName(), 'color')
+    assert.equal(imported.colorNode.nodeType, nodeType ?? null)
+    assert.equal(imported.colorNode.getNodeType(new NodeBuilder(mesh)), nodeType ?? 'vec3')
+    assert.equal((await gltf.parser.getDependency('material', 0)).colorNode, imported.colorNode)
+    const preview = cloneImportedTSLMaterial(imported)
+    const previewMesh = new Mesh(mesh.geometry, preview)
+    assert.equal(getImportedMaterialNode(imported, 'baseColor').node, preview.colorNode)
+    assert.equal(preview.colorNode.getNodeType(new NodeBuilder(previewMesh)), nodeType ?? 'vec3')
+    const reexport = await exportEditorMeshes([previewMesh], binary)
+    const expected = structuredClone(attributeExtension)
+    expected.nodes[attributeId].args = { attributeName: 'color', nodeType: nodeType ?? null }
+    assert.deepEqual(jsonOf(reexport).materials[0].extensions[extensionName], expected)
+    const reimported = meshesOf(await load(reexport, errors))[0]
+    assert.equal(reimported.material.colorNode.getNodeType(new NodeBuilder(reimported)), nodeType ?? 'vec3')
+    assert.deepEqual(errors, [])
+    checks++
+  }
+  for (const [field, args] of invalidAttributeArgs) {
+    const errors = []
+    const gltf = await load(fixtureFor(args), errors)
+    const loaded = meshesOf(gltf)[0].material
+    const cached = await gltf.parser.getDependency('material', 0)
+    for (const material of [loaded, cached]) {
+      assert.equal(material.type, 'MeshPhysicalMaterial', `AttributeNode invalid ${field} must fall back`)
+      assert.equal(material.isNodeMaterial, undefined)
+      assert.equal(material.colorNode, undefined)
+      for (const key of ['roughness', 'metalness', 'opacity', 'transparent', 'clearcoat', 'transmission', 'ior']) {
+        assert.equal(material[key], attributeOriginal[key])
+      }
+      for (const key of ['color', 'emissive']) assert.ok(material[key].equals(attributeOriginal[key]))
+    }
+    assert.equal(errors.length, 1)
+    assert.ok(errors[0].includes('AttributeNode'), errors[0])
+    assert.ok(errors[0].includes(field), errors[0])
+    const reexport = await exportEditorMeshes([new Mesh(attributeGeometry, loaded)], binary)
+    assert.equal(jsonOf(reexport).materials[0].extensions?.[extensionName], undefined)
+    checks++
+  }
+}
+console.log('PASS glTF/GLB AttributeNode: explicit/inferred shader types survive import/preview/re-export; malformed metadata preserves ordinary PBR/cache with diagnostics')
 
 // Corrupt real exported operations so placeholders and generic link assignment
 // cannot hide missing inputs, extra operands or overwritten operation metadata.

@@ -139,6 +139,98 @@ try {
       assert.equal(exceptions.length, 0, `Graph reset errors: ${exceptions.slice(0, 3).join(' | ')}`)
     }
   }
+  // Stop the editor's animation loop for the independent material comparisons.
+  // Keep this same local page, but reload without its application entry module.
+  await send('Network.enable')
+  await send('Network.setBlockedURLs', { urls: [new URL('src/main.tsx', editorURL).href] })
+  await reload()
+  // Read actual WebGPU pixels: metadata equality alone cannot detect a changed
+  // scalar/vector shader result. A custom attribute avoids glTF's automatic
+  // COLOR_0 vertex-color multiplication, isolating AttributeNode's explicit type.
+  for (const binary of [false, true]) {
+    const result = await evaluate(`(async () => {
+      const THREE = await import('/node_modules/.vite/deps/three_webgpu.js')
+      const TSL = await import('/node_modules/.vite/deps/three_tsl.js')
+      const { exportEditorMeshes, createEditorGLTFLoader, cloneImportedTSLMaterial } = await import('/src/tslGltf.ts')
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
+      camera.position.z = 2
+      const geometry = new THREE.PlaneGeometry(2, 2)
+      geometry.setAttribute('_colorprobe', new THREE.Float32BufferAttribute([
+        0.2, 0.6, 0.8, 0.2, 0.6, 0.8, 0.2, 0.6, 0.8, 0.2, 0.6, 0.8,
+      ], 3))
+      const material = new THREE.MeshBasicNodeMaterial()
+      material.colorNode = TSL.attribute('_colorprobe', 'float')
+      const mesh = new THREE.Mesh(geometry, material)
+      let webgpu = true
+      const render = async (object) => {
+        // Compile each material in a fresh renderer to compare independent
+        // shader results without sharing pipeline/uniform state between scenes.
+        const renderer = new THREE.WebGPURenderer()
+        await renderer.init()
+        webgpu &&= renderer.backend.isWebGPUBackend === true
+        const target = new THREE.RenderTarget(8, 8)
+        renderer.setRenderTarget(target)
+        const scene = new THREE.Scene()
+        // Compare material behavior on fixed preview geometry, as in the editor.
+        scene.add(new THREE.Mesh(geometry, object.material))
+        try {
+          await renderer.compileAsync(scene, camera)
+          renderer.render(scene, camera)
+          return Array.from(await renderer.readRenderTargetPixelsAsync(target, 4, 4, 1, 1))
+        } finally {
+          target.dispose()
+          renderer.dispose()
+        }
+      }
+      const errors = []
+      const load = async (asset) => {
+        const gltf = await createEditorGLTFLoader((error) => errors.push(String(error))).parseAsync(
+          asset instanceof ArrayBuffer ? asset : JSON.stringify(asset), '',
+        )
+        let mesh
+        gltf.scene.traverse((object) => { if (object.isMesh) mesh = object })
+        return mesh
+      }
+      const jsonOf = (asset) => asset instanceof ArrayBuffer
+        ? JSON.parse(new TextDecoder().decode(new Uint8Array(asset, 20, new DataView(asset).getUint32(12, true))))
+        : asset
+      try {
+        const before = await render(mesh)
+        const asset = await exportEditorMeshes([mesh], ${binary})
+        const imported = await load(asset)
+        const preview = cloneImportedTSLMaterial(imported.material)
+        const previewMesh = new THREE.Mesh(imported.geometry, preview)
+        const after = await render(previewMesh)
+        const reexport = await exportEditorMeshes([previewMesh], ${binary})
+        const reimported = await load(reexport)
+        const again = await render(reimported)
+        const inferred = new THREE.MeshBasicNodeMaterial()
+        inferred.colorNode = TSL.attribute('_colorprobe')
+        const inferredPixels = await render(new THREE.Mesh(geometry, inferred))
+        return { before, after, again, inferredPixels, errors,
+          webgpu,
+          types: [imported.material.colorNode.nodeType, preview.colorNode.nodeType, reimported.material.colorNode.nodeType],
+          extension: jsonOf(asset).materials[0].extensions.THREE_materials_tsl,
+          reextension: jsonOf(reexport).materials[0].extensions.THREE_materials_tsl,
+        }
+      } finally {
+        geometry.dispose()
+        material.dispose()
+      }
+    })()`)
+    assert.equal(result.webgpu, true, 'Attribute rendering must use WebGPU')
+    assert.ok(result.before[0] > 0 && result.before[0] < 255, 'Readback must contain rendered material pixels')
+    assert.deepEqual(result.before.slice(0, 3), Array(3).fill(result.before[0]), 'Explicit float renders gray')
+    assert.notDeepEqual(result.inferredPixels, result.before, 'Fixture must detect a lost explicit type')
+    assert.deepEqual(result.after, result.before, 'Imported preview must render the same pixels')
+    assert.deepEqual(result.again, result.before, 'Re-exported material must render the same pixels')
+    assert.deepEqual(result.types, ['float', 'float', 'float'])
+    assert.deepEqual(result.reextension, result.extension)
+    assert.deepEqual(result.errors, [])
+    assert.equal(exceptions.length, 0, `Attribute render errors: ${exceptions.slice(0, 3).join(' | ')}`)
+    console.log(`PASS WebGPU ${binary ? 'GLB' : 'glTF'} explicit AttributeNode: matching pixels before export, imported preview and re-export`)
+  }
 } finally {
+  await send('Network.setBlockedURLs', { urls: [] })
   socket.close()
 }
