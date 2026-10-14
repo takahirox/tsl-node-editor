@@ -1,84 +1,66 @@
-# Issue #3: published v0.4.0 runtime blocker
+# Issue #3: publication blocker resolved
 
-The migration in [Issue #3](https://github.com/takahirox/tsl-node-editor/issues/3)
-is **blocked and incomplete**. On 2026-10-14, both requested npm packages were
-available as v0.4.0, but their published `dist` files implemented Draft v1.0.
-Their bundled READMEs described Draft v2.0. No compatible newer release appeared
-in the registry version lists at the time of this check.
+The earlier published v0.4.0 artifacts contained Draft v1.0 runtime code despite
+v2.0 documentation. The maintainer's [Issue #3 update](https://github.com/takahirox/tsl-node-editor/issues/3#issuecomment-6171268446)
+requires **v0.4.1** for both packages and asks that the Issue remain open until
+all acceptance criteria are satisfied. Do not install v0.4.0.
 
-## Verified evidence
+## Current evidence
 
-Installed the registry packages with `three@0.186.1` and
-`@types/three@0.186.0`, then exercised their exported runtime APIs:
+Registry queries for both exact v0.4.1 package versions succeed. The editor now
+locks exporter/loader **0.4.1**, `three` **0.186.1** and `@types/three` **0.186.0**.
+The lockfile records the registry URLs and integrity hashes. Installed package
+entrypoints and declarations implement the v2.0 APIs: the exporter supplies the
+actual material type, and the loader requires a resolver and chooses the type
+from each extension. No removed version/materialType/supportedVersions options
+are used.
 
-- The exporter emitted `version: "1.0"` and omitted `materialType` for Basic,
-  Standard and Physical NodeMaterials with a uniform color graph.
-- The real GLTFLoader with the published loader plugin and its default resolver
-  returned ordinary materials for valid v2.0 input for all three families.
-  It did not reconstruct the graph or report an unsupported-version diagnostic.
-- The exporter declaration retained the removed `version` option; the loader
-  declaration retained `materialType` and `supportedVersions` and omitted the
-  documented v2.0 `materialTypes` mapping. The runtime matched those old APIs.
-- The upstream source at `main` contained the new v2.0 implementations. The
-  installed package entrypoints resolve to `dist/index.js`, not that source.
-
-Registry artifact identifiers:
-
-| Package | Published at (UTC) | `dist.integrity` |
-| --- | --- | --- |
-| `@takahirox/gltf-three-materials-tsl-exporter@0.4.0` | 2026-10-14 09:32:36.305 | `sha512-D1cexuiSnk3ulxx7E1qe5ut2UQpVct0T+n7+dOE/s9bVqj5zT8cd5OuMt28yp87Xwwib66wBq6gmzJx61OC8IA==` |
-| `@takahirox/gltf-three-materials-tsl-loader@0.4.0` | 2026-10-14 09:31:23.986 | `sha512-Mud9kNxNfcrLQf0sldY/EDrG8ZcLSiDfuYjhLgFZnUFRU3Z4H5wxLstuqaiCN2q/uXVqEmCWrMImQ3375RckWA==` |
-
-The dependency experiment was reverted. Production source, package.json and the
-lockfile retain the upstream checkpoint's behavior. Changing just the version
-field, using the old loader options, or installing unpublished upstream source
-would not satisfy the Issue's compatibility and publication requirements.
-
-## Reproduce the publication check
-
-From the repository root, use a separate temporary install so the editor's
-dependency files stay intact:
+The six publication probes now pass: Basic, Standard and Physical exports emit
+version `2.0`, correct material types and graph entrypoints; the real loader
+reconstructs each material and its uniform color node without diagnostics.
 
 ```sh
-probe_dir=$(mktemp -d)
-npm install --prefix "$probe_dir" --ignore-scripts --no-audit --no-fund \
-  @takahirox/gltf-three-materials-tsl-exporter@0.4.0 \
-  @takahirox/gltf-three-materials-tsl-loader@0.4.0 three@0.186.1
-node scripts/check-tsl-publication.mjs "$probe_dir"
+npm ci
+node scripts/check-tsl-publication.mjs
 ```
 
-The script is a publication gate, separate from the application's checks. It
-asserts v2.0 encoding, material type and graph entrypoint on exported materials,
-and uses the actual GLTFLoader to assert v2.0 reconstruction. All six assertions
-failed against the artifacts above, as expected for this blocker. It does not
-replace the full glTF/GLB, fallback, resource or editor regression coverage still
-required by the Issue.
+An optional directory argument probes a separate npm install instead of the
+locked editor dependencies. Both plugin manifest versions must be `0.4.1`.
 
-## Checkpoint validation
+## Editor migration and verification
 
-- Restored upstream lockfile: `npm ci` passed.
-- Restored application: `npm run build` passed.
-- `npm run lint` failed with 13 existing errors and 20 warnings in unchanged
-  `src/App.tsx` (unused bindings and `prefer-const` errors).
-- Isolated publication probe: six failures reproduced against the registry
-  packages. This is expected blocker evidence, not a passing migration test.
-- `node --check scripts/check-tsl-publication.mjs` and `git diff --check` passed.
+Both UI export paths use the strict upstream serializer with the editor's paired
+r186 Var/Convert/Join/Split adapters. The loader registers the corresponding
+resolver and routes fallback diagnostics to the toast UI. Imported TSL materials
+retain their full material state and node slots in preview and re-export.
+See [glTF support and reproducible checks](tsl-gltf.md) for supported nodes,
+limitations and browser reproduction instructions.
 
-## Resume requirements
+Verified in the assigned worktree:
 
-1. Publish rebuilt compatible loader/exporter artifacts upstream, ensuring the
-   package runtime and declarations agree with the v2.0 README. Confirm the
-   corrected registry release and its supported APIs before installing it.
-2. Resume the entire editor migration: dependencies, both exporter paths,
-   loader registration and diagnostics, imported NodeMaterial preview and
-   re-export, paired node adapters or documented limitations, and regression
-   coverage. The current glTF material node reads ordinary values; review its
-   handling of imported node slots so reconstructed graphs survive editor use.
-3. Adapt r186 TSL APIs/types. The exploratory upgraded build failed, including
-   removed `atan2` and more specific node return types; lint also reported
-   existing source errors. Complete `npm ci`, build, lint and Issue acceptance
-   checks after implementation.
-4. Keep the required GitHub Pages import/export verification pending until the
-   actual post-merge deployment. Optional WebGPU visual comparison was not run.
+- `npm ci` passes with the migrated lockfile.
+- `npm run build` passes; Vite reports its existing large-chunk advisory.
+- `npm run lint` passes with 20 existing hook-dependency warnings and no errors.
+- `npm run check:tsl` passes six publication probes and 35 editor integration
+  checks: glTF/GLB round-trips, preview clones/pins, shared graphs, paired
+  adapters, mixed-material slots, ordinary PBR/extensions/geometry, actual
+  uncompressed KTX2 texture loading, invalid-extension fallback in both formats,
+  and unsupported-node export errors.
+- `npm run check:tsl:browser` passes six actual UI cases in a dedicated headless
+  Chrome with WebGPU/SwiftShader: Basic/Standard/Physical glTF and GLB imports,
+  rendered previews, text exports and GLB downloads retain their entire graphs.
+  The runner checks canvas dimensions and captures uncaught/render validation
+  errors. This verifies rendering behavior, not a subjective visual comparison.
+- Script syntax and `git diff --check` pass.
 
-No upstream publication, push, pull request, merge or comment was performed.
+The publication blocker and missing editor implementation are resolved. Optional
+visual comparison on a physical GPU was not performed. Real Basis-worker
+transcoding is not covered by the uncompressed KTX2 fixture; the bundled Basis
+transcoder assets match the locked r186 assets byte-for-byte.
+
+## Required follow-up
+
+Keep Issue #3 open. The required GitHub Pages import/export verification remains
+pending until the actual post-merge deployment. This local fix node does not
+push, merge, publish, edit the remote PR description or verify deployment.
+The updated reviewable PR body is in [issue-3-pr-body.md](issue-3-pr-body.md).

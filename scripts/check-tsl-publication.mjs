@@ -5,17 +5,15 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-if (!process.argv[2]) {
-  throw new Error('Usage: node scripts/check-tsl-publication.mjs <isolated-install-directory>')
-}
-const requirePackage = createRequire(resolve(process.argv[2], 'package.json'))
+const installDirectory = process.argv[2] ?? '.'
+const requirePackage = createRequire(resolve(installDirectory, 'package.json'))
 const load = async (name) => {
   // Plugin packages expose an import-only entrypoint, so require.resolve cannot
   // select it. Read that entrypoint from the isolated package's own manifest.
   if (name.startsWith('@takahirox/')) {
-    const directory = resolve(process.argv[2], 'node_modules', name)
+    const directory = resolve(installDirectory, 'node_modules', name)
     const manifest = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
-    assert.equal(manifest.version, '0.4.0')
+    assert.equal(manifest.version, '0.4.1')
     return import(pathToFileURL(resolve(directory, manifest.exports['.'].import)).href)
   }
   return import(pathToFileURL(requirePackage.resolve(name)).href)

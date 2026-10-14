@@ -1,35 +1,46 @@
 ## Summary
 
-The published v0.4.0 loader/exporter artifacts contain Draft v1.0 runtime code despite documenting Draft v2.0, blocking the compatible published-package migration required by Issue #3.
+The editor exported Draft v1.0 TSL data and imported assets without the TSL loader.
+Use the corrected published loader/exporter **0.4.1** and the tested Three.js
+r186 baseline to support Draft v2.0 glTF/GLB import, preview and re-export.
 
-Add an isolated publication probe for Basic, Standard and Physical NodeMaterial export/import, with evidence and reproduction instructions in `docs/issue-3-publication-blocker.md`. Fix the 13 existing application lint errors that blocked validation, preserving coordinate-independent graph signatures and existing error handling.
+Both UI export paths now export every populated node slot on each material using
+the upstream strict serializer, with paired editor adapters for r186 variable,
+conversion, vector-join and swizzle nodes. Imported Basic, Standard and Physical
+NodeMaterials retain their complete graphs and ordinary material values through
+preview cloning and re-export. Loader failures report useful toast diagnostics
+and retain the ordinary glTF material. KTX2 loading remains registered.
+Unsupported nodes fail export instead of silently producing incomplete data.
 
-## Outcome
-
-**Blocked and incomplete — draft, do not merge.** The probe exposes exports with version "1.0" and missing `materialType`, and v2.0 imports that return ordinary materials without reconstructing graphs. The production dependencies and TSL integration still use their existing versions and behavior; the migration is not implemented.
-
-Remaining scope: confirm corrected compatible published packages, align dependencies and Three.js, update both exporter paths, register the loader and diagnostics, preserve imported graphs through preview/re-export, adapt supported nodes, and add glTF/GLB round-trip and fallback regression coverage. This PR does not yet satisfy Issue #3's pre-merge acceptance criteria. The upstream-maintainer publication question remains pending; no answer or successful migration result is inferred.
+See [support and regression checks](docs/tsl-gltf.md) and
+[publication/migration evidence](docs/issue-3-publication-blocker.md) for limits
+and reproduction instructions. The former v0.4.0 publication blocker is resolved.
 
 ## Validation
 
-Reported by the latest upstream fix checkpoint (registry and runtime probes were not rerun during this publication):
+- `npm ci`, `npm run build` and `npm run lint` pass with the migrated lockfile;
+  lint retains 20 existing warnings and Vite retains its large-chunk advisory.
+- `npm run check:tsl`: six publication probes and 35 editor integration checks
+  pass, covering Basic/Standard/Physical glTF/GLB round-trips, preview clones/pins,
+  shared graphs, editor adapters, mixed materials, ordinary geometry/PBR/physical
+  extensions, actual uncompressed KTX2 imports, complete invalid-extension
+  fallback in both formats, and unsupported-node export errors.
+- `npm run check:tsl:browser`: six real editor UI round-trips pass in dedicated
+  headless Chrome with WebGPU/SwiftShader, including rendered preview, text
+  export and GLB download; no uncaught/render validation errors were captured.
+- Script syntax and whitespace checks pass.
 
-- Registry version lists still end at 0.4.0, and both artifact integrity hashes match the recorded blocker.
-- All six isolated runtime probes using Three.js 0.186.1 fail: Basic, Standard and Physical exports emit version "1.0" without `materialType`, and valid v2.0 imports return ordinary materials. These failures reproduce the blocker; they are not passing migration tests.
-- `node --check scripts/check-tsl-publication.mjs` and worktree/staged whitespace checks pass.
-
-Verified for this PR update: `node --check scripts/check-tsl-publication.mjs` and `git diff --check` pass. Only the PR description artifact changed since the previous published head; no additional application changes were made.
-
-The preceding review reports that `npm ci`, `npm run build`, and `npm run lint` pass with the existing locked dependencies; lint retains 20 warnings. These checks do not validate the requested migrated packages. They were not rerun for this documentation-only revision.
-
-An earlier exploratory r186 build failed on TSL API/type changes, and the dependency experiment was reverted. Full migration, ordinary glTF/KTX2 preservation, glTF/GLB round-trips, shared graphs, and fallback/error acceptance remain unverified. Optional WebGPU visual comparison was not performed. The blocker document's checkpoint validation section records the earlier lint failure; the later lint fixes and passing review results supersede that result.
+Optional visual comparison on physical GPU hardware was not performed.
+Uncompressed KTX2 parsing and registration are covered; Basis-worker transcoding
+is not exercised by these fixtures. Unsupported graph classes and generated
+JavaScript preview limitations are documented.
 
 ## Related Issues
 
-Closes #3
-
-This closing reference is required by the current publication-node instruction. The migration remains incomplete: keep this PR draft and do not merge until the remaining implementation and pre-merge acceptance checks are complete. Issue #3 remains open while this PR is unmerged.
+Refs #3. Keep the Issue open until all acceptance criteria, including the required
+post-deployment check, are satisfied, as requested in the maintainer's update.
 
 ## Required post-merge verification
 
-Pending actual deployment: verify the GitHub Pages editor loads and its glTF import/export flow works. Pre-merge checks do not establish deployment success.
+Pending actual deployment: verify the GitHub Pages editor loads and its glTF
+import/export flow works. Pre-merge checks do not establish deployment success.
