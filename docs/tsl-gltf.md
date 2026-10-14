@@ -33,6 +33,9 @@ Math and Operator nodes. The editor supplies paired **VarNode**, **ConvertNode**
 swizzles. Adapter arguments, required links and allowed link properties are
 validated before publishing an imported material replacement. Literal and
 attribute nodes reject all links so file data cannot overwrite their values.
+Const/Uniform literal constructor metadata also requires supported value types,
+shape-compatible node types and valid precision; missing/null node types retain
+Three.js inference.
 
 Texture sampling/buffer nodes, Fn/ShaderCall/function/closure nodes, noise nodes
 and other unadapted classes cannot currently be exported as glTF graphs.
@@ -60,7 +63,7 @@ npm run lint
 npm run check:tsl
 ```
 
-`check:tsl` runs six locked-package publication probes and 325 checks against the
+`check:tsl` runs six locked-package publication probes and 537 checks against the
 same editor import/export/preview functions used by `App.tsx`. It generates
 fixtures in memory, uses real Three.js loaders/exporters/plugins, and shims only
 browser file I/O primitives. Operation regressions cover missing and malformed
@@ -69,6 +72,9 @@ preserved ordinary PBR values and useful diagnostics, as well as valid unary
 operations and both atan forms. Wrapper, literal and attribute regressions
 reject unexpected links (including constructor metadata overwrites) in both
 glTF and GLB, preserving the complete ordinary material and parser cache.
+Literal metadata regressions cover unsupported/malformed types, incompatible
+value shapes and invalid precision, alongside valid inferred/explicit types
+and re-exports.
 The KTX2 fixture uses the
 real KTX2Loader and checks
 pixel data/dependency identity for ordinary and reconstructed TSL materials. It
