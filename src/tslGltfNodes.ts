@@ -45,9 +45,39 @@ export const createEditorNodeSerializer = () => createDefaultNodeSerializer({
   overrides: Object.fromEntries(['VarNode', 'ConvertNode', 'JoinNode', 'SplitNode'].map((op) => [op, (node: unknown) => serializeWrapper(op, node)])),
 })
 
+// InputNode.deserialize trusts nodeType and precision. Limit explicit types to
+// those r186 can build from the deserialized value's shape; conversion unions
+// belong to ConvertNode, not literal constructors. Missing/null types infer.
+const literalNodeTypes: Record<string, readonly string[]> = {
+  float: ['float', 'int', 'uint'],
+  bool: ['bool'],
+  color: ['color'],
+  vec2: ['vec2', 'bvec2', 'ivec2', 'uvec2'],
+  vec3: ['vec3', 'bvec3', 'ivec3', 'uvec3'],
+  vec4: ['vec4', 'bvec4', 'ivec4', 'uvec4'],
+  mat2: ['mat2'],
+  mat3: ['mat3'],
+  mat4: ['mat4'],
+}
+const validateLiteralMetadata = (op: string, args: unknown) => {
+  const data = record(args)
+  if (typeof data.valueType !== 'string' || !Object.hasOwn(literalNodeTypes, data.valueType)) {
+    throw new Error(`Invalid ${op} valueType: unsupported literal type`)
+  }
+  if (data.nodeType !== null && data.nodeType !== undefined &&
+    (typeof data.nodeType !== 'string' || !literalNodeTypes[data.valueType].includes(data.nodeType))) {
+    throw new Error(`Invalid ${op} nodeType: expected a literal type compatible with ${data.valueType}`)
+  }
+  if (data.precision !== null && data.precision !== undefined &&
+    (typeof data.precision !== 'string' || !['low', 'medium', 'high'].includes(data.precision))) {
+    throw new Error(`Invalid ${op} precision: expected low, medium or high`)
+  }
+}
+
 export const createEditorNodeResolver = () => {
   const defaults = createDefaultNodeResolver()
   return (op: string, args?: JsonValue) => {
+    if (op === 'ConstNode' || op === 'UniformNode') validateLiteralMetadata(op, args)
     if (!['VarNode', 'ConvertNode', 'JoinNode', 'SplitNode'].includes(op)) return defaults(op, args)
     const data = record(args)
     const placeholder = new ConstNode(0)

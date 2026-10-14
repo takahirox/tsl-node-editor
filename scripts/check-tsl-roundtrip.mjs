@@ -19,6 +19,7 @@ const compileModule = async (filename, localImports = {}) => {
   return `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
 }
 const adapters = await compileModule('../src/tslGltfNodes.ts')
+const { createEditorNodeResolver } = await import(adapters)
 const integration = await compileModule('../src/tslGltf.ts', { './tslGltfNodes': adapters })
 const { exportEditorMeshes, createEditorGLTFLoader, cloneImportedTSLMaterial, getImportedMaterialNode } = await import(integration)
 
@@ -304,6 +305,96 @@ for (const binary of [false, true]) {
   }
 }
 console.log('PASS glTF/GLB wrapper/literal/attribute unexpected links: complete ordinary PBR fallback with diagnostics')
+
+// InputNode.deserialize accepts arbitrary constructor metadata. Check supported
+// literal shapes separately, then exercise atomic fallback through the loader.
+const literalResolver = createEditorNodeResolver()
+const literalShapes = [
+  ['float', 0.5, ['float', 'int', 'uint']],
+  ['bool', true, ['bool']],
+  ['color', [0.2, 0.4, 0.6], ['color']],
+  ...[2, 3, 4].map((size) => [`vec${size}`, Array(size).fill(0.5), ['', 'b', 'i', 'u'].map((prefix) => `${prefix}vec${size}`)]),
+  ...[2, 3, 4].map((size) => [`mat${size}`, Array.from({ length: size * size }, (_, i) => i % (size + 1) === 0 ? 1 : 0), [`mat${size}`]]),
+]
+for (const op of ['ConstNode', 'UniformNode']) {
+  for (const [valueType, value, types] of literalShapes) {
+    for (const nodeType of [undefined, null, ...types]) {
+      const args = { value, valueType, ...(nodeType === undefined ? {} : { nodeType }), precision: 'high' }
+      const node = literalResolver(op, args)
+      assert.ok(node)
+      assert.equal(node.nodeType, nodeType ?? null)
+      assert.equal(node.precision, 'high')
+      assert.deepEqual(node.value?.toArray?.() ?? node.value?.elements ?? node.value, value)
+      checks++
+    }
+  }
+}
+console.log('PASS Const/Uniform supported literal shapes, inferred/explicit types and precision')
+
+const literalOriginal = new MeshStandardMaterial({ color: 0x234567, roughness: 0.3, metalness: 0.7, emissive: 0x123456, opacity: 0.8, transparent: true })
+const literalAsset = await exportEditorMeshes([new Mesh(geometry, literalOriginal)], false)
+literalAsset.extensionsUsed = [...(literalAsset.extensionsUsed ?? []), extensionName]
+const validLiteralArgs = { value: 0.5, valueType: 'float', nodeType: 'float', precision: null }
+const invalidLiteralArgs = [
+  ...['banana', '', 42, {}, [], 'float|vec3', 'vec3', 'color', 'mat3', 'bool'].map((nodeType) => ['nodeType', { ...validLiteralArgs, nodeType }]),
+  ...['', 'highp', false, 0, {}, []].map((precision) => ['precision', { ...validLiteralArgs, precision }]),
+  ...['banana', 'constructor', 'int', null, 42].map((valueType) => ['valueType', { ...validLiteralArgs, valueType }]),
+  ['valueType', { value: 0.5, nodeType: 'float' }],
+  ['nodeType', { value: [0.2, 0.4, 0.6], valueType: 'color', nodeType: 'vec3' }],
+  ['nodeType', { value: [0.2, 0.4, 0.6], valueType: 'vec3', nodeType: 'color' }],
+  ['nodeType', { value: [0.2, 0.4], valueType: 'vec2', nodeType: 'vec4' }],
+  ['nodeType', { value: Array(9).fill(1), valueType: 'mat3', nodeType: 'mat4' }],
+]
+for (const binary of [false, true]) {
+  for (const op of ['ConstNode', 'UniformNode']) {
+    const fixtureFor = (args) => {
+      const fixture = structuredClone(literalAsset)
+      fixture.materials[0].extensions = { ...fixture.materials[0].extensions, [extensionName]: {
+        version: '2.0', materialType: 'MeshStandardNodeMaterial',
+        nodes: { n0: { op, args } }, entrypoints: { opacityNode: 'n0' },
+      } }
+      return binary ? toGLB(fixture) : fixture
+    }
+    // Missing/null type and precision metadata retain upstream inference/defaults.
+    for (const args of [
+      { value: 0.5, valueType: 'float' },
+      { ...validLiteralArgs, nodeType: null },
+      ...['float', 'int', 'uint'].map((nodeType) => ({ ...validLiteralArgs, nodeType })),
+      ...['low', 'medium', 'high'].map((precision) => ({ ...validLiteralArgs, precision })),
+    ]) {
+      const errors = []
+      const gltf = await load(fixtureFor(args), errors)
+      const material = meshesOf(gltf)[0].material
+      assert.equal(material.type, 'MeshStandardNodeMaterial')
+      assert.equal(material.opacityNode.value, 0.5)
+      assert.equal(material.opacityNode.nodeType, args.nodeType ?? null)
+      assert.equal(material.opacityNode.precision, args.precision ?? null)
+      assert.equal((await gltf.parser.getDependency('material', 0)).opacityNode, material.opacityNode)
+      assert.deepEqual(errors, [])
+      const reexport = await exportEditorMeshes([new Mesh(geometry, material)], binary)
+      assert.equal(jsonOf(reexport).materials[0].extensions[extensionName].nodes.n0.op, op)
+      checks++
+    }
+    for (const [field, args] of invalidLiteralArgs) {
+      const errors = []
+      const gltf = await load(fixtureFor(args), errors)
+      const loaded = meshesOf(gltf)[0].material
+      const cached = await gltf.parser.getDependency('material', 0)
+      for (const material of [loaded, cached]) {
+        assert.equal(material.type, 'MeshStandardMaterial', `${op} invalid ${field} must fall back`)
+        assert.equal(material.isNodeMaterial, undefined)
+        assert.equal(material.opacityNode, undefined)
+        for (const key of ['roughness', 'metalness', 'opacity', 'transparent']) assert.equal(material[key], literalOriginal[key])
+        for (const key of ['color', 'emissive']) assert.ok(material[key].equals(literalOriginal[key]))
+      }
+      assert.equal(errors.length, 1)
+      assert.ok(errors[0].includes(op), errors[0])
+      assert.ok(errors[0].includes(field), errors[0])
+      checks++
+    }
+  }
+}
+console.log('PASS glTF/GLB literal constructor metadata: valid imports/re-exports and ordinary PBR/cache fallback with diagnostics')
 
 // Corrupt real exported operations so placeholders and generic link assignment
 // cannot hide missing inputs, extra operands or overwritten operation metadata.
