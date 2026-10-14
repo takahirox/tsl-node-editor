@@ -17,6 +17,9 @@ preserve the ordinary material and report the operation and input in the
 diagnostic. Valid unary operations and both atan forms continue to round-trip.
 Wrapper, literal and attribute nodes also reject unexpected links, including
 links that could overwrite validated constructor metadata or literal values.
+ConstNode and UniformNode metadata is checked before upstream resolution:
+unsupported value types, shape-incompatible node types and invalid precision
+report diagnostics and preserve the ordinary material and parser cache.
 
 See [support and regression checks](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/tsl-gltf.md) and
 [publication/migration evidence](https://github.com/takahirox/tsl-node-editor/blob/docs/issue-3-tsl-publication-blocker/docs/issue-3-publication-blocker.md) for limits
@@ -32,25 +35,27 @@ the [maintainer's Issue update](https://github.com/takahirox/tsl-node-editor/iss
 
 ## Validation
 
-The upstream fix node reports these results for the latest allowed-link validation
+The upstream fix node reports these results for the latest literal-metadata validation
 fix in its assigned worktree:
 
 - `npm ci`, `npm run build` and `npm run lint` pass with the migrated lockfile;
   lint retains 20 existing warnings and Vite retains its large-chunk advisory.
-- Six publication probes and 325 editor integration checks pass, covering
+- Six publication probes and 537 editor integration checks pass, covering
   Basic/Standard/Physical glTF/GLB round-trips, preview clones/pins,
   shared graphs, editor adapters, mixed materials, ordinary geometry/PBR/physical
   extensions, actual uncompressed KTX2 imports, complete invalid-extension
   fallback in both formats, malformed MathNode/OperatorNode references, extra
   operands and unknown link properties, valid unary operations and both atan
   forms, unexpected wrapper/literal/attribute links and constructor metadata
-  overwrites, complete ordinary-material/parser-cache preservation, and
+  overwrites, malformed literal valueType/nodeType/precision metadata,
+  valid inferred/explicit literal types and re-exports,
+  complete ordinary-material/parser-cache preservation, and
   unsupported-node export errors.
 - `npm run check:tsl:browser`: six real editor UI round-trips pass in dedicated
   headless Chrome with WebGPU/SwiftShader, including rendered preview, text
   export and GLB download; no uncaught/render validation errors were captured.
   These browser checks passed at the implementation checkpoint and were not
-  rerun for the subsequent link-validation fixes.
+  rerun for the subsequent link and literal-metadata validation fixes.
 - Script syntax and whitespace checks pass.
 
 Publication checks: script syntax and `git diff --check` pass. Runtime results
