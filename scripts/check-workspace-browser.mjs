@@ -94,7 +94,7 @@ const reload = async () => {
   })
   await send('Page.reload')
   await loaded
-  await waitFor("document.querySelector('.workspace') && document.body.innerText.includes('WebGPU/TSL running')")
+  await waitFor("document.querySelector('.workspace') && document.querySelector('.status')?.textContent.includes('WebGPU/TSL running')")
   await settled()
 }
 const assertLinksAligned = async () => {
@@ -133,6 +133,21 @@ try {
   })()`)
   await reload()
   await waitFor("document.querySelectorAll('.node-card').length === 3")
+  // Open output without first using the desktop toggle, including a fresh iframe
+  // after closing output while Viewer remains selected.
+  await metrics(390, 844)
+  await reload()
+  await button('output', "document.querySelector('.compact-tabs')")
+  await button('Viewer')
+  await waitFor("document.querySelector('.viewer-frame')?.contentDocument?.querySelector('canvas')?.width > 0")
+  await button('Close output')
+  assert.equal(await evaluate("document.querySelector('.viewer-frame') === null && document.querySelector('.workspace').dataset.compactPanel === 'graph'"), true)
+  await button('output', "document.querySelector('.compact-tabs')")
+  await waitFor("document.querySelector('.viewer-frame')?.contentDocument?.querySelector('canvas')?.width > 0")
+  await button('Code', "document.querySelector('.code-overlay-tabs')")
+  await button('Close output')
+  console.log('PASS 390px direct Output → Viewer and reopening Viewer after Close output')
+  await metrics(1440, 1000)
   await button('Fit graph')
   assert.ok(await evaluate(`(() => { const graph = document.querySelector('.graph-viewport').getBoundingClientRect(), preview = document.querySelector('.preview-surface').getBoundingClientRect(); return graph.width > 500 && preview.width > 250 && graph.right <= preview.left && [...document.querySelectorAll('.node-card')].every((node) => { const r = node.getBoundingClientRect(); return r.left >= graph.left && r.right <= graph.right && r.top >= graph.top && r.bottom <= graph.bottom }) })()`))
   await assertLinksAligned()

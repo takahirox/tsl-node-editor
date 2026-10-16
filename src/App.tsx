@@ -518,6 +518,7 @@ function App() {
   const [compactPanel, setCompactPanel] = useState('graph')
   const [status, setStatus] = useState('Initializing...')
   const [showCode, setShowCode] = useState(false)
+  const outputActive = showCode || compactPanel === 'output'
   const [tslPanelMode, setTslPanelMode] = useState<'code' | 'viewer'>('code')
   const [tslOutputKind, setTslOutputKind] = useState<
     'tsl' | 'material' | 'app' | 'gltf'
@@ -15102,7 +15103,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!showCode || tslPanelMode !== 'viewer' || viewerReadyTick === 0) return
+    if (!outputActive || tslPanelMode !== 'viewer' || viewerReadyTick === 0) return
     const frame = viewerRef.current
     if (!frame?.contentWindow) return
     frame.contentWindow.postMessage(
@@ -15115,7 +15116,7 @@ function App() {
       '*',
     )
   }, [
-    showCode,
+    outputActive,
     tslPanelMode,
     viewerReadyTick,
     appRuntime,
@@ -18282,7 +18283,7 @@ function App() {
           <details className="graph-help"><summary>Navigation help</summary><p>Drag background or scroll to pan. Ctrl + scroll to zoom. Drag output pins to inputs; click an input to disconnect. Shift-click nodes for multiple selection. Delete removes selected nodes. Ctrl/Cmd + Z undoes.</p></details>
         </div>
         <section className="output-dock" aria-label="Code and export output">
-          {showCode || compactPanel === 'output' ? (
+          {outputActive ? (
             <div
               className="code-overlay"
               onPointerDown={blockCanvasPointer}
