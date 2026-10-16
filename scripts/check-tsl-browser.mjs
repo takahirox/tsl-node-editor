@@ -97,7 +97,7 @@ try {
       await waitFor("document.querySelector('#imported-gltf-material-index')?.disabled === false")
       await waitFor("document.body.innerText.includes('WebGPU/TSL running')")
       assert.ok(await evaluate('document.querySelector(\'canvas\').width > 0 && document.querySelector(\'canvas\').height > 0'), 'Preview canvas must have a drawable size')
-      await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Show TSL').click()`)
+      await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Code & export').click()`)
       await evaluate(`(() => {
         const code = document.querySelector('.code-overlay pre').textContent
         const body = code.replace(/^import[\\s\\S]*?from\\s*['"][^'"]+['"];?\\s*/gm, '').replace(/^export /gm, '')

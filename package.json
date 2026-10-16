@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check:tsl": "node scripts/check-tsl-publication.mjs && node scripts/check-tsl-roundtrip.mjs",
-    "check:tsl:browser": "node scripts/check-tsl-browser.mjs"
+    "check:tsl:browser": "node scripts/check-tsl-browser.mjs",
+    "check:workspace:browser": "node scripts/check-workspace-browser.mjs"
   },
   "dependencies": {
     "@takahirox/gltf-three-materials-tsl-exporter": "0.4.1",

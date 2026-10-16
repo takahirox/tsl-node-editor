@@ -586,7 +586,7 @@
 
 .node-card {
   position: absolute;
-  width: 200px;
+  width: 260px;
   padding: 10px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -633,7 +633,9 @@
 
 .node-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .node-action {
@@ -770,8 +772,9 @@
 }
 
 .pin {
-  width: 10px;
-  height: 10px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.35);
 }
@@ -779,7 +782,7 @@
 .pin.dot-input,
 .pin.dot-output {
   padding: 0;
-  background: transparent;
+  background: #7ca7ff;
   cursor: pointer;
 }
 
@@ -877,30 +880,4 @@
 .node-input[type='color'] {
   padding: 4px;
   height: 32px;
-}
-
-@media (max-width: 860px) {
-  .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .node-canvas {
-    position: static;
-    inset: auto;
-    margin: 12px;
-  }
-
-  .node-stack-title,
-  .node-empty,
-  .node-card {
-    position: static;
-    width: auto;
-    transform: none !important;
-  }
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import './workspace.css'
+import { NodeInspector } from './NodeInspector'
 import {
   AmbientLight,
   BoxGeometry,
@@ -511,10 +513,11 @@ const getGltfTextureId = (nodeId: string) => `gltf-texture-${nodeId}`
 
 function App() {
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const overlayOpenRef = useRef(false)
+  const previewRef = useRef<HTMLDivElement | null>(null)
+  const [paletteVisible, setPaletteVisible] = useState(true)
+  const [compactPanel, setCompactPanel] = useState('graph')
   const [status, setStatus] = useState('Initializing...')
   const [showCode, setShowCode] = useState(false)
-  const [showNodes, setShowNodes] = useState(true)
   const [tslPanelMode, setTslPanelMode] = useState<'code' | 'viewer'>('code')
   const [tslOutputKind, setTslOutputKind] = useState<
     'tsl' | 'material' | 'app' | 'gltf'
@@ -627,7 +630,10 @@ function App() {
     {},
   )
   const objectUrlRef = useRef<Record<string, string>>({})
-  const [storageSlot, setStorageSlot] = useState('default')
+  // Start with the persisted slot so the default graph cannot race its load.
+  const [storageSlot, setStorageSlot] = useState(() =>
+    localStorage.getItem('tsl-node-editor:last-slot')?.trim() || 'default',
+  )
   const [storageSlots, setStorageSlots] = useState<string[]>(['default'])
   const [newSlotName, setNewSlotName] = useState('')
   const historyBySlotRef = useRef<Record<string, HistoryState>>({})
@@ -3934,13 +3940,6 @@ function App() {
   }
 
   useEffect(() => {
-    const lastSlot = localStorage.getItem(lastSlotStorageKey)
-    if (!lastSlot) return
-    const normalized = normalizeSlot(lastSlot)
-    setStorageSlot(normalized)
-  }, [])
-
-  useEffect(() => {
     localStorage.setItem(lastSlotStorageKey, storageSlot)
   }, [storageSlot, lastSlotStorageKey])
 
@@ -4465,13 +4464,10 @@ function App() {
     editorGroups.some((group) => group.collapsed && group.nodeIds.includes(nodeId))
 
   useEffect(() => {
-    if (isFunctionEditing) {
-      setGroupBounds((prev) => (Object.keys(prev).length ? {} : prev))
-      return
-    }
     const container = viewportRef.current
     if (!container) return
     const rafId = window.requestAnimationFrame(() => {
+      if (!container.clientWidth || !container.clientHeight) return
       const rect = container.getBoundingClientRect()
       const viewState = viewRef.current
       const next: Record<string, { x: number; y: number }> = {}
@@ -4513,12 +4509,12 @@ function App() {
         pendingExampleLayoutRef.current = false
         setEditorNodes((prev) => spreadNodesByColumn(prev))
       }
-      if (!groups.length) {
+      if (isFunctionEditing || !groups.length) {
         setGroupBounds((prev) => (Object.keys(prev).length ? {} : prev))
         return
       }
       const nodeMap = new Map(nodes.map((node) => [node.id, node]))
-      const fallbackSize = { width: 200, height: 160 }
+      const fallbackSize = { width: 260, height: 180 }
       const padding = 16
       const nextBounds: Record<
         string,
@@ -4563,6 +4559,10 @@ function App() {
     groups,
     isFunctionEditing,
     spreadNodesByColumn,
+    editorNodes,
+    editorConnections,
+    setEditorNodes,
+    compactPanel,
   ])
 
   const nodeIdSignature = useMemo(
@@ -16054,34 +16054,6 @@ function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    overlayOpenRef.current = showCode
-    if (showCode) {
-      if (dragRafRef.current !== null) {
-        window.cancelAnimationFrame(dragRafRef.current)
-        dragRafRef.current = null
-      }
-      if (panRafRef.current !== null) {
-        window.cancelAnimationFrame(panRafRef.current)
-        panRafRef.current = null
-      }
-      const drag = dragRef.current
-      if (drag?.elements) {
-        Object.values(drag.elements).forEach((element) => {
-          element.style.willChange = ''
-          element.style.transform = ''
-        })
-      }
-      dragPointerRef.current = null
-      panPointerRef.current = null
-      isDraggingNodesRef.current = false
-      dragRef.current = null
-      groupDragRef.current = null
-      panRef.current = null
-      linkDraftRef.current = null
-      setLinkDraft(null)
-    }
-  }, [showCode])
 
   useEffect(() => {
     const container = viewportRef.current
@@ -16212,7 +16184,6 @@ function App() {
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (overlayOpenRef.current) return
       const drag = dragRef.current
       const pan = panRef.current
       if (container) {
@@ -16735,7 +16706,6 @@ function App() {
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (overlayOpenRef.current) return
       if (!container.contains(event.target as Node)) return
       event.preventDefault()
       const rect = container.getBoundingClientRect()
@@ -16744,7 +16714,7 @@ function App() {
         const zoomScale = Math.exp(-event.deltaY * 0.001)
         const nextZoom = Math.min(
           2.5,
-          Math.max(0.4, viewState.zoom * zoomScale),
+          Math.max(0.1, viewState.zoom * zoomScale),
         )
         const cursorX = event.clientX - rect.left
         const cursorY = event.clientY - rect.top
@@ -16792,7 +16762,7 @@ function App() {
   }, [applyViewportTransform])
 
   useEffect(() => {
-    const container = viewportRef.current
+    const container = previewRef.current
     if (!container) return
     let disposed = false
 
@@ -16817,14 +16787,16 @@ function App() {
     scene.add(keyLight)
 
     const resize = () => {
-      const width = container.clientWidth
-      const height = container.clientHeight
+      const width = Math.max(1, container.clientWidth)
+      const height = Math.max(1, container.clientHeight)
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       if (renderer) {
         renderer.setSize(width, height, false)
       }
     }
+
+    const resizeObserver = new ResizeObserver(resize)
 
   const start = async () => {
     try {
@@ -16882,7 +16854,7 @@ function App() {
 
       meshesRef.current.forEach((mesh) => scene.add(mesh))
       resize()
-      window.addEventListener('resize', resize)
+      resizeObserver.observe(container)
 
     const startTime = performance.now()
     let lastTick = startTime
@@ -16914,7 +16886,7 @@ function App() {
 
     return () => {
       disposed = true
-      window.removeEventListener('resize', resize)
+      resizeObserver.disconnect()
       renderer?.setAnimationLoop(null)
       renderer?.dispose()
       ktx2LoaderRef.current?.dispose()
@@ -16934,258 +16906,59 @@ function App() {
 
   const displayView = panRef.current ? viewRef.current : view
 
+  const navigateGraph = (ids?: string[]) => {
+    const container = viewportRef.current
+    if (!container) return
+    const visible = editorNodes.filter((node) => !isNodeInCollapsedGroup(node.id) && (!ids || ids.includes(node.id)))
+    const boxes = visible.map((node) => {
+      const card = container.querySelector<HTMLElement>(`[data-node-id="${node.id}"].node-card`)
+      return { x: node.x, y: node.y, width: card?.offsetWidth || 260, height: card?.offsetHeight || 180 }
+    })
+    // Collapsed groups are graph content too, even when all their cards are hidden.
+    editorGroups.filter((group) => group.collapsed && (!ids || group.nodeIds.some((id) => ids.includes(id)))).forEach((group) => {
+      const bounds = groupBounds[group.id]
+      if (bounds) boxes.push({ ...bounds, height: 56 })
+    })
+    if (!boxes.length) return
+    const left = Math.min(...boxes.map((box) => box.x))
+    const top = Math.min(...boxes.map((box) => box.y))
+    const width = Math.max(...boxes.map((box) => box.x + box.width)) - left
+    const height = Math.max(...boxes.map((box) => box.y + box.height)) - top
+    const zoom = Math.min(1, Math.max(0.1, Math.min((container.clientWidth - 64) / width, (container.clientHeight - 64) / height)))
+    const next = { x: (container.clientWidth - width * zoom) / 2 - left * zoom, y: (container.clientHeight - height * zoom) / 2 - top * zoom, zoom }
+    viewRef.current = next
+    applyViewportTransform(next)
+    setView(next)
+  }
+  const zoomGraph = (factor: number) => {
+    const container = viewportRef.current
+    if (!container) return
+    const current = viewRef.current
+    const zoom = Math.max(0.1, Math.min(2.5, current.zoom * factor))
+    const x = container.clientWidth / 2
+    const y = container.clientHeight / 2
+    const next = { x: x - (x - current.x) * zoom / current.zoom, y: y - (y - current.y) * zoom / current.zoom, zoom }
+    viewRef.current = next
+    applyViewportTransform(next)
+    setView(next)
+  }
+  const inspectedNode = editorNodes.find((node) => selectedNodeIds.includes(node.id))
+
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <h1>TSL Node Editor</h1>
-        <a
-          className="project-link"
-          href="https://github.com/takahirox/tsl-node-editor"
-          target="_blank"
-          rel="noreferrer"
-        >
-          GitHub Project
-        </a>
-        <div className="status">
-          <div className="dot" />
-          {status}
-        </div>
-        {isFunctionEditing ? (
-          <section className="panel">
-            <h2>Function Editor</h2>
-            <div className="function-editor-title">
-              {activeFunction?.name ?? 'Unknown Function'}
-            </div>
-            <div className="button-row">
-              <button
-                className="palette-button"
-                type="button"
-                onClick={() => setActiveFunctionId(null)}
-              >
-                Back to Graph
-              </button>
-            </div>
-            <div className="function-pin-editor">
-              <div className="function-pin-section">
-                <div className="function-pin-title">Inputs</div>
-                {activeFunction?.inputs.length ? (
-                  activeFunction.inputs.map((pin, index) => (
-                    <div className="function-pin-row" key={`${pin.nodeId}-${pin.name}`}>
-                      <input
-                        className="function-pin-input"
-                        defaultValue={pin.name}
-                        onBlur={(event) => {
-                          const next = event.currentTarget.value
-                          const ok = renameFunctionPin('input', index, next)
-                          if (!ok) {
-                            event.currentTarget.value = pin.name
-                          }
-                        }}
-                      />
-                      <div className="function-pin-actions">
-                        <button
-                          className="function-pin-button"
-                          type="button"
-                          onClick={() => moveFunctionPin('input', index, -1)}
-                          disabled={index === 0}
-                        >
-                          Up
-                        </button>
-                        <button
-                          className="function-pin-button"
-                          type="button"
-                          onClick={() => moveFunctionPin('input', index, 1)}
-                          disabled={index === activeFunction.inputs.length - 1}
-                        >
-                          Down
-                        </button>
-                        <button
-                          className="function-pin-button danger"
-                          type="button"
-                          onClick={() => removeFunctionPin('input', index)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="function-pin-empty">No inputs</div>
-                )}
-              </div>
-              <div className="function-pin-section">
-                <div className="function-pin-title">Outputs</div>
-                {activeFunction?.outputs.length ? (
-                  activeFunction.outputs.map((pin, index) => (
-                    <div className="function-pin-row" key={`${pin.nodeId}-${pin.name}`}>
-                      <input
-                        className="function-pin-input"
-                        defaultValue={pin.name}
-                        onBlur={(event) => {
-                          const next = event.currentTarget.value
-                          const ok = renameFunctionPin('output', index, next)
-                          if (!ok) {
-                            event.currentTarget.value = pin.name
-                          }
-                        }}
-                      />
-                      <div className="function-pin-actions">
-                        <button
-                          className="function-pin-button"
-                          type="button"
-                          onClick={() => moveFunctionPin('output', index, -1)}
-                          disabled={index === 0}
-                        >
-                          Up
-                        </button>
-                        <button
-                          className="function-pin-button"
-                          type="button"
-                          onClick={() => moveFunctionPin('output', index, 1)}
-                          disabled={index === activeFunction.outputs.length - 1}
-                        >
-                          Down
-                        </button>
-                        <button
-                          className="function-pin-button danger"
-                          type="button"
-                          onClick={() => removeFunctionPin('output', index)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="function-pin-empty">No outputs</div>
-                )}
-              </div>
-            </div>
-          </section>
-        ) : null}
+    <div className={`app workspace${paletteVisible ? '' : ' palette-collapsed'}`} data-compact-panel={compactPanel}>
+      <header className="workspace-header">
+        <a className="workspace-brand" href="https://github.com/takahirox/tsl-node-editor" target="_blank" rel="noreferrer">TSL <span>Node Editor</span></a>
+        <details className="project-menu" onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.currentTarget.open = false
+            event.currentTarget.querySelector('summary')?.focus()
+          }
+        }}>
+          <summary>Project</summary>
+          <div className="project-popover">
         <section className="panel">
-          <h2>Node Palette</h2>
-          <div className="palette">
-            <input
-              className="palette-search"
-              type="search"
-              placeholder="Search nodes"
-              value={paletteQuery}
-              onChange={(event) => setPaletteQuery(event.target.value)}
-            />
-            <div className="button-row slot-actions">
-              <button
-                className="palette-button compact"
-                type="button"
-                onClick={() => setPaletteOpen((prev) => ({ ...prev, ...allPaletteOpen }))}
-                disabled={isPaletteAllExpanded}
-              >
-                Expand All
-              </button>
-              <button
-                className="palette-button compact"
-                type="button"
-                onClick={() => setPaletteOpen((prev) => ({ ...prev, ...allPaletteClosed }))}
-                disabled={isPaletteAllCollapsed}
-              >
-                Collapse All
-              </button>
-            </div>
-            {filteredPaletteGroups.map((group) => (
-              <div key={group.id} className="palette-group">
-                <button
-                  className="palette-group-toggle"
-                  type="button"
-                  onClick={() =>
-                    setPaletteOpen((prev) => ({
-                      ...prev,
-                      [group.id]: !prev[group.id],
-                    }))
-                  }
-                >
-                  <span className="palette-group-caret">
-                    {paletteOpen[group.id] ? 'v' : '>'}
-                  </span>
-                  <span className="palette-group-title">{group.label}</span>
-                </button>
-                {paletteOpen[group.id] ? (
-                  <div className="palette-group-list">
-                    {group.types.map((type) => {
-                      const item = palette.find((entry) => entry.type === type)
-                      if (!item) return null
-                      return (
-                        <button
-                          key={item.type}
-                          className="palette-button"
-                          onClick={() => addNode(item.type, item.label)}
-                          type="button"
-                        >
-                          {item.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="panel">
-          <h2>Overlay</h2>
-          <div className="button-row">
-            <button
-              className="palette-button"
-              type="button"
-              onClick={() => setShowCode((prev) => !prev)}
-            >
-              {showCode ? 'Hide TSL' : 'Show TSL'}
-            </button>
-            <button
-              className="palette-button"
-              type="button"
-              onClick={() => setShowNodes((prev) => !prev)}
-            >
-              {showNodes ? 'Hide Nodes' : 'Show Nodes'}
-            </button>
-          </div>
-        </section>
-        <section className="panel">
-          <h2>History</h2>
-          <div className="button-row">
-            <button className="palette-button" type="button" onClick={undo} disabled={!canUndo}>
-              Undo
-            </button>
-            <button className="palette-button" type="button" onClick={redo} disabled={!canRedo}>
-              Redo
-            </button>
-          </div>
-        </section>
-        <section className="panel">
-          <h2>Layout</h2>
-          <div className="button-row">
-            <button className="palette-button" type="button" onClick={layoutNodes}>
-              Auto Layout
-            </button>
-            <button
-              className="palette-button"
-              type="button"
-              onClick={groupSelectedNodes}
-              disabled={!selectedNodeIds.length || isFunctionEditing}
-            >
-              Group Selected
-            </button>
-            <button
-              className="palette-button"
-              type="button"
-              onClick={ungroupSelectedNodes}
-              disabled={!selectedNodeIds.length || isFunctionEditing}
-            >
-              Ungroup Selected
-            </button>
-          </div>
-        </section>
-        <section className="panel">
-          <h2>Storage</h2>
+          <h2>Project slots</h2>
+          <p className="empty-state">Changes save automatically in this browser. Switch slots to load a project.</p>
           <div className="slot-row">
             <label className="export-format">
               <span>Active slot</span>
@@ -17249,6 +17022,7 @@ function App() {
             <input
               className="palette-input"
               placeholder="New slot"
+              aria-label="New slot name"
               value={newSlotName}
               onChange={(event) => setNewSlotName(event.target.value)}
               onKeyDown={(event) => {
@@ -17306,136 +17080,218 @@ function App() {
             </button>
           </div>
         </section>
-      </aside>
-      <main className="viewport" ref={viewportRef}>
-        <div className="viewport-label">Preview</div>
-        <div className="node-canvas">
-          {toast ? <div className="toast">{toast}</div> : null}
-          {showCode ? (
-            <div
-              className="code-overlay"
-              onPointerDown={blockCanvasPointer}
-              onPointerMove={blockCanvasPointer}
-              onPointerUp={blockCanvasPointer}
-            >
-              <div className="code-overlay-header">
-                <div className="code-overlay-title-group">
-                  <div className="code-overlay-title">TSL</div>
-                  <label className="code-overlay-select">
-                    <span>Output</span>
-                    <select
-                      className="palette-select"
-                      value={tslOutputKind}
-                      onChange={(event) => {
-                        const value = event.target.value
-                        if (
-                          value === 'material' ||
-                          value === 'app' ||
-                          value === 'tsl' ||
-                          value === 'gltf'
-                        ) {
-                          setTslOutputKind(value)
-                        }
-                      }}
-                    >
-                      <option value="tsl">TSL</option>
-                      <option value="material">Material</option>
-                      <option value="app">App</option>
-                      <option value="gltf">glTF</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="code-overlay-actions">
-                  {tslPanelMode === 'code' ? (
-                    <div className="tsl-export-controls">
-                      {tslOutputKind === 'gltf' ? (
-                        <button
-                          className="palette-button"
-                          type="button"
-                          onClick={downloadGltfExport}
-                        >
-                          Download glTF
-                        </button>
-                      ) : (
-                        <>
-                          <label className="export-format">
-                            <span>Format</span>
-                            <select
-                              className="palette-select"
-                              value={exportFormat}
-                              onChange={(event) =>
-                                setExportFormat(
-                                  event.target.value === 'ts' ? 'ts' : 'js',
-                                )
-                              }
-                            >
-                              <option value="js">JS</option>
-                              <option value="ts">TS</option>
-                            </select>
-                          </label>
-                          <button
-                            className="palette-button"
-                            type="button"
-                            onClick={copyTSLExport}
-                          >
-                            Copy TSL Output
-                          </button>
-                          <button
-                            className="palette-button"
-                            type="button"
-                            onClick={downloadTSLExport}
-                          >
-                            Download TSL Output
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ) : null}
-                  <div className="code-overlay-tabs">
-                    <button
-                      className={
-                        tslPanelMode === 'code'
-                          ? 'code-overlay-tab active'
-                          : 'code-overlay-tab'
-                      }
-                      type="button"
-                      onClick={() => setTslPanelMode('code')}
-                    >
-                      Code
-                    </button>
-                    <button
-                      className={
-                        tslPanelMode === 'viewer'
-                          ? 'code-overlay-tab active'
-                          : 'code-overlay-tab'
-                      }
-                      type="button"
-                      onClick={() => setTslPanelMode('viewer')}
-                    >
-                      Viewer
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {tslPanelMode === 'viewer' ? (
-                <div className="tsl-viewer">
-                  <iframe
-                    ref={viewerRef}
-                    className="viewer-frame"
-                    src={`${import.meta.env.BASE_URL}viewer.html`}
-                    title="TSL Viewer"
-                  />
-                </div>
-              ) : (
-                <div className="tsl-export">
-                  <pre className="code-preview" onWheel={allowOverlayScroll}>
-                    {tslOutput}
-                  </pre>
-                </div>
-              )}
+          </div>
+        </details>
+        <div className="history-actions" role="group" aria-label="History">
+          <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">Undo</button>
+          <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+        </div>
+        <span className="workspace-slot" title="Active project slot">{storageSlot}</span>
+        <button className="library-toggle" type="button" aria-pressed={paletteVisible} onClick={() => setPaletteVisible((value) => !value)}>Nodes</button>
+        <button className="output-toggle" type="button" aria-pressed={showCode} onClick={() => setShowCode((value) => !value)}>{showCode ? 'Hide output' : 'Code & export'}</button>
+      </header>
+      <nav className="compact-tabs" aria-label="Workspace panels">
+        {['graph', 'nodes', 'preview', 'inspect', 'output'].map((panel) => (
+          <button key={panel} type="button" aria-pressed={compactPanel === panel} onClick={() => setCompactPanel(panel)}>{panel === 'inspect' ? 'Inspector' : panel}</button>
+        ))}
+      </nav>
+      <aside className="sidebar" aria-label="Node library">
+        {isFunctionEditing ? (
+          <section className="panel">
+            <h2>Function Editor</h2>
+            <div className="function-editor-title">
+              {activeFunction?.name ?? 'Unknown Function'}
             </div>
-          ) : null}
-          {showNodes ? (
+            <div className="button-row">
+              <button
+                className="palette-button"
+                type="button"
+                onClick={() => setActiveFunctionId(null)}
+              >
+                Back to Graph
+              </button>
+            </div>
+            <div className="function-pin-editor">
+              <div className="function-pin-section">
+                <div className="function-pin-title">Inputs</div>
+                {activeFunction?.inputs.length ? (
+                  activeFunction.inputs.map((pin, index) => (
+                    <div className="function-pin-row" key={`${pin.nodeId}-${pin.name}`}>
+                      <input
+                        aria-label="Function pin name"
+                        className="function-pin-input"
+                        defaultValue={pin.name}
+                        onBlur={(event) => {
+                          const next = event.currentTarget.value
+                          const ok = renameFunctionPin('input', index, next)
+                          if (!ok) {
+                            event.currentTarget.value = pin.name
+                          }
+                        }}
+                      />
+                      <div className="function-pin-actions">
+                        <button
+                          className="function-pin-button"
+                          type="button"
+                          onClick={() => moveFunctionPin('input', index, -1)}
+                          disabled={index === 0}
+                        >
+                          Up
+                        </button>
+                        <button
+                          className="function-pin-button"
+                          type="button"
+                          onClick={() => moveFunctionPin('input', index, 1)}
+                          disabled={index === activeFunction.inputs.length - 1}
+                        >
+                          Down
+                        </button>
+                        <button
+                          className="function-pin-button danger"
+                          type="button"
+                          onClick={() => removeFunctionPin('input', index)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="function-pin-empty">No inputs</div>
+                )}
+              </div>
+              <div className="function-pin-section">
+                <div className="function-pin-title">Outputs</div>
+                {activeFunction?.outputs.length ? (
+                  activeFunction.outputs.map((pin, index) => (
+                    <div className="function-pin-row" key={`${pin.nodeId}-${pin.name}`}>
+                      <input
+                        aria-label="Function pin name"
+                        className="function-pin-input"
+                        defaultValue={pin.name}
+                        onBlur={(event) => {
+                          const next = event.currentTarget.value
+                          const ok = renameFunctionPin('output', index, next)
+                          if (!ok) {
+                            event.currentTarget.value = pin.name
+                          }
+                        }}
+                      />
+                      <div className="function-pin-actions">
+                        <button
+                          className="function-pin-button"
+                          type="button"
+                          onClick={() => moveFunctionPin('output', index, -1)}
+                          disabled={index === 0}
+                        >
+                          Up
+                        </button>
+                        <button
+                          className="function-pin-button"
+                          type="button"
+                          onClick={() => moveFunctionPin('output', index, 1)}
+                          disabled={index === activeFunction.outputs.length - 1}
+                        >
+                          Down
+                        </button>
+                        <button
+                          className="function-pin-button danger"
+                          type="button"
+                          onClick={() => removeFunctionPin('output', index)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="function-pin-empty">No outputs</div>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
+        <section className="panel">
+          <div className="panel-heading"><h2>Node library</h2><span>Add nodes</span></div>
+          <div className="palette">
+            <input
+              className="palette-search"
+              type="search"
+              placeholder="Search nodes"
+              aria-label="Search nodes"
+              value={paletteQuery}
+              onChange={(event) => setPaletteQuery(event.target.value)}
+            />
+            <div className="button-row slot-actions">
+              <button
+                className="palette-button compact"
+                type="button"
+                onClick={() => setPaletteOpen((prev) => ({ ...prev, ...allPaletteOpen }))}
+                disabled={isPaletteAllExpanded}
+              >
+                Expand All
+              </button>
+              <button
+                className="palette-button compact"
+                type="button"
+                onClick={() => setPaletteOpen((prev) => ({ ...prev, ...allPaletteClosed }))}
+                disabled={isPaletteAllCollapsed}
+              >
+                Collapse All
+              </button>
+            </div>
+            {!filteredPaletteGroups.length ? <p className="empty-state">No nodes match “{paletteQuery}”. Try a type such as Color or Texture.</p> : null}
+            {filteredPaletteGroups.map((group) => (
+              <div key={group.id} className="palette-group">
+                <button
+                  className="palette-group-toggle"
+                  aria-expanded={Boolean(paletteQuery.trim()) || Boolean(paletteOpen[group.id])}
+                  type="button"
+                  onClick={() =>
+                    setPaletteOpen((prev) => ({
+                      ...prev,
+                      [group.id]: !prev[group.id],
+                    }))
+                  }
+                >
+                  <span className="palette-group-caret">
+                    {paletteQuery.trim() || paletteOpen[group.id] ? '−' : '+'}
+                  </span>
+                  <span className="palette-group-title">{group.label}</span>
+                </button>
+                {paletteQuery.trim() || paletteOpen[group.id] ? (
+                  <div className="palette-group-list">
+                    {group.types.map((type) => {
+                      const item = palette.find((entry) => entry.type === type)
+                      if (!item) return null
+                      return (
+                        <button
+                          key={item.type}
+                          className="palette-button"
+                          onClick={() => { addNode(item.type, item.label); setCompactPanel('graph') }}
+                          type="button"
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      </aside>
+      <main className={`graph-workspace${showCode ? ' output-open' : ''}`} aria-label="Graph workspace">
+        <div className="graph-toolbar" role="group" aria-label="Graph actions">
+          <strong>{isFunctionEditing ? activeFunction?.name : 'Material graph'}</strong>
+          {isFunctionEditing ? <button type="button" onClick={() => setActiveFunctionId(null)}>Back to Graph</button> : null}
+          <button type="button" onClick={layoutNodes}>Auto Layout</button>
+          <button type="button" onClick={groupSelectedNodes} disabled={!selectedNodeIds.length || isFunctionEditing}>Group Selected</button>
+          <button type="button" onClick={ungroupSelectedNodes} disabled={!selectedNodeIds.length || isFunctionEditing}>Ungroup Selected</button>
+        </div>
+        <div className="viewport graph-viewport" ref={viewportRef} aria-label="Node graph">
+          <div className="node-canvas">
             <>
               <svg
                 ref={nodeLinksRef}
@@ -17485,9 +17341,8 @@ function App() {
                   })()
                 ) : null}
               </svg>
-              <div className="node-stack-title">Graph</div>
           {editorNodes.length === 0 ? (
-            <div className="node-empty">No nodes yet</div>
+            <div className="node-empty">Your graph is empty. Open Nodes and search for a node to begin.</div>
           ) : null}
               <div
                 ref={nodeWorldRef}
@@ -17506,10 +17361,12 @@ function App() {
                     style={{
                       transform: `translate(${bounds.x}px, ${bounds.y}px)`,
                       width: `${bounds.width}px`,
-                      height: `${bounds.height}px`,
+                      height: group.collapsed ? '56px' : `${bounds.height}px`,
                     }}
                   >
+                    <div className="node-group-heading">
                     <button
+                      aria-expanded={!group.collapsed}
                       className="node-group-header"
                       type="button"
                       onPointerDown={(event) => {
@@ -17574,6 +17431,11 @@ function App() {
                     >
                       <span className="node-group-title">{group.label}</span>
                       <span className="node-group-spacer" />
+
+                      <span className="node-group-toggle">
+                        {group.collapsed ? '+' : '-'}
+                      </span>
+                    </button>
                       <button
                         className="node-group-rename"
                         type="button"
@@ -17588,10 +17450,7 @@ function App() {
                       >
                         Rename
                       </button>
-                      <span className="node-group-toggle">
-                        {group.collapsed ? '+' : '-'}
-                      </span>
-                    </button>
+                    </div>
                     <button
                       className="node-group-action"
                       type="button"
@@ -17647,6 +17506,8 @@ function App() {
                         className={`pin dot-input${
                           typeWarnings[`${node.id}:${input}`] ? ' pin-warning' : ''
                         }`}
+                        aria-label={`Disconnect ${node.label} input ${input}`}
+                        title={`Input: ${input}. Click to disconnect; drag an output here to connect.`}
                         data-pin-key={`${node.id}:input:${input}`}
                         type="button"
                         onClick={(event) => {
@@ -17679,6 +17540,15 @@ function App() {
                       }${isNodeInCollapsedGroup(node.id) ? ' node-hidden' : ''}`}
                       key={node.id}
                       data-node-id={node.id}
+                      tabIndex={0}
+                      aria-label={`${node.label} node`}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          setSelectedNodeIds((prev) => event.shiftKey ? prev.includes(node.id) ? prev.filter((id) => id !== node.id) : [...prev, node.id] : [node.id])
+                        }
+                      }}
                       style={{ transform: `translate(${node.x}px, ${node.y}px)` }}
                       onPointerDown={(event) => {
                         const target = event.target as HTMLElement | null
@@ -17859,6 +17729,9 @@ function App() {
                       <span className="pin-label">{output}</span>
                       <span
                         className="pin dot-output"
+                        role="img"
+                        aria-label={`${node.label} output ${output}`}
+                        title={`Output: ${output}. Drag to an input to connect.`}
                         data-pin-key={`${node.id}:output:${output}`}
                         data-pin-type="output"
                         data-node-id={node.id}
@@ -18397,9 +18270,160 @@ function App() {
                 })}
               </div>
             </>
-          ) : null}
+
+          </div>
         </div>
+        <div className="graph-navigation" role="group" aria-label="Graph navigation">
+          <button type="button" onClick={() => navigateGraph()}>Fit graph</button>
+          <button type="button" aria-label="Zoom out" onClick={() => zoomGraph(1 / 1.2)}>−</button>
+          <button type="button" onClick={() => zoomGraph(1 / viewRef.current.zoom)} title="Reset zoom to 100%">{Math.round(displayView.zoom * 100)}%</button>
+          <button type="button" aria-label="Zoom in" onClick={() => zoomGraph(1.2)}>+</button>
+          <span>{editorNodes.length} nodes · {editorConnections.length} links</span>
+          <details className="graph-help"><summary>Navigation help</summary><p>Drag background or scroll to pan. Ctrl + scroll to zoom. Drag output pins to inputs; click an input to disconnect. Shift-click nodes for multiple selection. Delete removes selected nodes. Ctrl/Cmd + Z undoes.</p></details>
+        </div>
+        <section className="output-dock" aria-label="Code and export output">
+          {showCode || compactPanel === 'output' ? (
+            <div
+              className="code-overlay"
+              onPointerDown={blockCanvasPointer}
+              onPointerMove={blockCanvasPointer}
+              onPointerUp={blockCanvasPointer}
+            >
+              <div className="code-overlay-header">
+                <div className="code-overlay-title-group">
+                  <div className="code-overlay-title">Output</div>
+                  <label className="code-overlay-select">
+                    <span>Output</span>
+                    <select
+                      className="palette-select"
+                      value={tslOutputKind}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        if (
+                          value === 'material' ||
+                          value === 'app' ||
+                          value === 'tsl' ||
+                          value === 'gltf'
+                        ) {
+                          setTslOutputKind(value)
+                        }
+                      }}
+                    >
+                      <option value="tsl">TSL</option>
+                      <option value="material">Material</option>
+                      <option value="app">App</option>
+                      <option value="gltf">glTF</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="code-overlay-actions">
+                  {tslPanelMode === 'code' ? (
+                    <div className="tsl-export-controls">
+                      {tslOutputKind === 'gltf' ? (
+                        <button
+                          className="palette-button"
+                          type="button"
+                          onClick={downloadGltfExport}
+                        >
+                          Download glTF
+                        </button>
+                      ) : (
+                        <>
+                          <label className="export-format">
+                            <span>Format</span>
+                            <select
+                              className="palette-select"
+                              value={exportFormat}
+                              onChange={(event) =>
+                                setExportFormat(
+                                  event.target.value === 'ts' ? 'ts' : 'js',
+                                )
+                              }
+                            >
+                              <option value="js">JS</option>
+                              <option value="ts">TS</option>
+                            </select>
+                          </label>
+                          <button
+                            className="palette-button"
+                            type="button"
+                            onClick={copyTSLExport}
+                          >
+                            Copy output
+                          </button>
+                          <button
+                            className="palette-button"
+                            type="button"
+                            onClick={downloadTSLExport}
+                          >
+                            Download output
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                  <button type="button" onClick={() => { setShowCode(false); setCompactPanel('graph') }}>Close output</button>
+                  <div className="code-overlay-tabs">
+                    <button
+                      className={
+                        tslPanelMode === 'code'
+                          ? 'code-overlay-tab active'
+                          : 'code-overlay-tab'
+                      }
+                      type="button"
+                      aria-pressed={tslPanelMode === 'code'}
+                      onClick={() => setTslPanelMode('code')}
+                    >
+                      Code
+                    </button>
+                    <button
+                      className={
+                        tslPanelMode === 'viewer'
+                          ? 'code-overlay-tab active'
+                          : 'code-overlay-tab'
+                      }
+                      type="button"
+                      aria-pressed={tslPanelMode === 'viewer'}
+                      onClick={() => setTslPanelMode('viewer')}
+                    >
+                      Viewer
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {tslPanelMode === 'viewer' ? (
+                <div className="tsl-viewer">
+                  <iframe
+                    ref={viewerRef}
+                    className="viewer-frame"
+                    src={`${import.meta.env.BASE_URL}viewer.html`}
+                    title="TSL Viewer"
+                  />
+                </div>
+              ) : (
+                <div className="tsl-export">
+                  <pre className="code-preview" onWheel={allowOverlayScroll}>
+                    {tslOutput}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
       </main>
+      <aside className="preview-dock" aria-label="Preview and properties">
+        <section className="preview-panel">
+          <div className="panel-heading"><h2>Live preview</h2><span>WebGPU</span></div>
+          <div className="preview-surface" ref={previewRef} />
+          <div className={`status${/failed|not available/i.test(status) ? ' status-error' : ''}`} role="status"><span className="dot" />{status}</div>
+        </section>
+        <NodeInspector node={inspectedNode} count={editorNodes.filter((node) => selectedNodeIds.includes(node.id)).length}
+          connections={editorConnections.filter((link) => link.from.nodeId === inspectedNode?.id || link.to.nodeId === inspectedNode?.id).length}
+          warnings={Object.entries(typeWarnings).filter(([key]) => key.startsWith(`${inspectedNode?.id}:`)).map(([pin, warning]) => `${pin.slice((inspectedNode?.id.length ?? 0) + 1)}: ${warning}`)}
+          onChange={(patch) => setEditorNodes((prev) => prev.map((node) => node.id === inspectedNode?.id ? { ...node, ...patch } : node))}
+          onFocus={() => { setCompactPanel('graph'); requestAnimationFrame(() => navigateGraph(selectedNodeIds)) }} />
+      </aside>
+      {toast ? <div className="toast" role="status">{toast}</div> : null}
     </div>
   )
 }
