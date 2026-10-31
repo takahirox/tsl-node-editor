@@ -68,6 +68,7 @@ For Issue authors and maintainer-authorized development (the public PR policy ab
 - [Issue template](.github/ISSUE_TEMPLATE/issue.md)
 - [Pull request template](.github/pull_request_template.md)
 - [Development flow and English collaboration-language policy](docs/development-flow.md)
+- [Test and CI performance principles](docs/development-flow.md#test-and-ci-performance-principles)
 - [Review and merge guidelines](docs/review-guidelines.md)
 - [AI agent entry point](AGENTS.md)
 
