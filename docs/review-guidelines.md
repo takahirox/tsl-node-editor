@@ -29,6 +29,13 @@ what was actually performed, including failures, skips, and unperformed checks.
 Documentation-only changes require no new runtime tests, unrelated application
 builds, browser/GPU/device confirmation, or deployed-site verification.
 
+Apply the [test and CI performance principles](development-flow.md#test-and-ci-performance-principles).
+For new or expanded checks, review the additional defects detected, overlap with
+existing coverage, and execution/maintenance cost while preserving required regressions.
+
+> Does this change provide sufficient confidence with the lightest appropriate
+> validation, without redundant execution?
+
 ## Separate pre-merge acceptance and post-merge verification
 
 Require mandatory pre-merge acceptance to be achievable and verifiable before merge.

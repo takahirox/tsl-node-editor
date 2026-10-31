@@ -50,16 +50,70 @@ with the locked dependencies. See [package.json](../package.json) for available 
 | `npm run build` | Run `tsc -b` and build the application with Vite. |
 | `npm run lint` | Run ESLint; the configuration targets TypeScript/TSX source. |
 | `npm run preview` | Serve a local production build with Vite. |
+| `npm run check:tsl` | Run locked-package publication probes and Node-based editor import/export/preview integration checks. |
+| `npm run check:tsl:browser` | Check actual-editor glTF/GLB import, WebGPU preview, export/download and attribute pixels. |
+| `npm run check:workspace:browser` | Check workspace interactions, responsive layout, storage and generated-app viewer behavior. |
 
-There is no configured test script or Markdown linter. Choose checks based on the
-changed files and the Issue. For application changes, build and lint where relevant,
-and check affected behavior as needed. Do not invent commands or claim unperformed checks.
+There is no `npm test` script, dedicated unit/component suite, or configured Markdown
+linter. The browser runners need Node.js 22+, Vite and a dedicated disposable Chrome
+profile; see [TSL check setup](tsl-gltf.md#reproducible-browser-ui-checks) and
+[workspace check setup](workspace-validation.md#reproduce). Run them sequentially
+when sharing a page. Choose checks based on the changed files and the Issue. For
+application changes, build and lint where relevant, and check affected behavior as
+needed. Apply the [test and CI performance principles](#test-and-ci-performance-principles)
+when choosing validation. Do not invent commands or claim unperformed checks.
 
 For templates/documentation-only changes, inspect Markdown and template syntax,
 resolve links and anchors, check whitespace with `git diff --check` (including staged
 files with `git diff --cached --check`), and review consistency against the Issue.
 Use available Markdown tooling when applicable. These changes require no new runtime
 tests, application build, browser/GPU/device confirmation, or deployed-site verification.
+
+### Test and CI performance principles
+
+**Detect the required failures at the lightest appropriate layer, without redundant
+execution.** Preserve required behavior, regression assertions and meaningful
+integration coverage when moving or consolidating checks.
+
+1. **Prefer the lightest meaningful layer.** For future tests, cover calculations,
+   branches and broad data combinations with fast unit/component checks that catch
+   concrete defects rather than mirror implementation. Use the existing Node-based
+   `check:tsl` for real loader/exporter boundaries; reserve browser/WebGPU checks for
+   DOM interactions, storage, downloads, renderer behavior and pixels that need them.
+2. **Choose combinations deliberately.** Use representative cases for distinct paths
+   through glTF/GLB, material types, graph states, viewport sizes and output modes.
+   Expand combinations exhaustively where interactions require it, rather than
+   automatically crossing every dimension. Retain required format/material
+   regressions and browser coverage when redistributing checks.
+3. **Match validation to the change.** Documentation needs the Markdown/link/whitespace
+   checks above. UI changes need affected workspace/browser checks; core graph or
+   import/export changes need relevant TSL integration checks and browser/WebGPU
+   coverage at affected boundaries. Build/CI changes need applicable configuration
+   and build validation. Give fast feedback first, then complete applicable regression
+   validation before merge; keep optional checks separate. The only current workflow
+   builds and publishes Pages on `main` pushes or manual dispatch; there is no PR CI
+   workflow. Publication is a separate responsibility: record genuinely required
+   deployment verification after merge, without deferring applicable pre-merge checks.
+4. **Reuse work and avoid duplicate execution.** Reuse builds, fixtures, downloads and
+   expensive setup when inputs match, with suitable cache keys and isolation. Pages
+   already caches npm downloads and passes a build artifact to deployment. Future CI
+   should avoid equivalent push/PR runs for the same revision and cancel superseded
+   runs when safe, preserving deployment ordering. Measure resource use before adding
+   parallel workers; browser suites sharing a page must remain sequential.
+5. **Review added confidence and cost together.** Identify the additional defect a
+   new or expanded check detects, existing coverage supplying the same assurance,
+   and execution/maintenance cost. Watch repeated browser, renderer or TypeScript
+   compiler setup, large model/texture fixtures, long rendering loops and growing
+   Cartesian products. Consolidate redundant work while retaining meaningful assertions.
+6. **Maintain an execution-time budget.** No measured normal-CI timing baseline or
+   target is recorded here. Establish one from actual runs during separately scoped
+   test/CI performance work, then monitor growth and investigate overruns. Track elapsed
+   feedback time, total runner/computation time and queue time separately. Revisit
+   validation structure and duplication as costs grow while retaining required coverage;
+   this policy adds no benchmark requirement, universal time limit or new merge gate.
+
+Changes to test implementations, workflows, caches or worker counts require separately
+scoped implementation work; these principles alone do not authorize them.
 
 ## 3. Create a Pull Request for the Issue
 
