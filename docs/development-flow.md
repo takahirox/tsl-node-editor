@@ -68,6 +68,7 @@ resolve links and anchors, check whitespace with `git diff --check` (including s
 files with `git diff --cached --check`), and review consistency against the Issue.
 Use available Markdown tooling when applicable. These changes require no new runtime
 tests, application build, browser/GPU/device confirmation, or deployed-site verification.
+Do not add routine manual approval or heavyweight model downloads for these edits.
 
 ### Test and CI performance principles
 
@@ -124,8 +125,10 @@ skipped, and unperformed checks accurately, including reasons. Separate optional
 validation and pending required post-merge verification from pre-merge results.
 
 Use an English commit message that describes what changed and why, referencing the
-source Issue. Claim to close an Issue only when the implementation fully addresses it.
-For intentionally partial work, state the remaining scope and keep the Issue open.
+source Issue. Use and preserve the normal `Closes #N` reference when the implementation
+fully addresses the Issue and applicable mandatory pre-merge acceptance is satisfied.
+For intentionally partial work, state the remaining scope, keep the parent Issue open,
+and use a non-closing reference instead.
 Pending checks possible only after merge do not make a complete implementation partial.
 
 ## 4. Review and revise as needed
@@ -142,14 +145,37 @@ when an answer arrives; do not repeatedly request code fixes for missing human i
 
 Approve and merge when the implementation and mandatory pre-merge checks are
 sufficient and no blocking review findings remain, within the authorization of the
-current workflow. Instructions that restrict a node to implementation and a local
-commit take precedence over this general flow.
+current workflow. Missing implementation, mandatory pre-merge tests, required
+protections, and genuinely necessary pre-merge human acceptance remain blockers.
+Instructions that restrict a node to implementation and a local commit take
+precedence over this general flow.
+
+After successful merge of a complete implementation, close the original Issue via
+`Closes #N` or the authorized workflow's close stage, then perform genuinely required
+post-merge checks. Do not remove the closing reference, keep the Issue open, or
+withhold approval solely for pending post-merge-only verification. This prevents
+review and publication from undoing each other's closure instructions in a repeated
+review → fix → publication → review loop.
 
 The [deployment workflow](../.github/workflows/deploy.yml) publishes GitHub Pages
 on pushes to `main` or manual dispatch. Pre-merge checks cannot prove that deployment
 or publication succeeded. When the Issue genuinely requires post-merge verification,
-keep it pending until performed, then record actual results, failures, and follow-up.
+keep the verification pending until performed. Record actual results and evidence in
+the merged PR, closed Issue, or a linked validation report, including affected revision,
+failures, and unperformed, pending, or environment-blocked checks with reasons.
+Issue closure does not claim these checks passed. An unavailable test environment
+alone is not evidence of a product defect.
 For templates/documentation-only Issues, required post-merge verification is normally None.
 
-The normal flow is Issue → implementation → PR → review → revision as needed → merge,
-followed by post-merge verification only when required.
+If verification reveals an actual defect, check for an existing equivalent Issue
+first; reuse it or create a new linked Issue with reproduction steps, affected
+revision, expected and actual behavior, and links to the original Issue and PR.
+Do not reopen the original Issue solely for post-merge follow-up.
+
+This lifecycle supersedes older instructions to keep an implemented Issue open solely
+for post-merge verification. Preserve historical test outcomes and evidence; this
+policy does not turn pending or unperformed checks into passed checks.
+
+The normal flow is Issue → implementation → PR → review → revision as needed → merge
+and close the original Issue → post-merge verification only when required → linked
+Issue for any discovered defect.
