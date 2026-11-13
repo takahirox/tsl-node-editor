@@ -1,5 +1,11 @@
 # Issue #3: publication blocker resolved
 
+> Historical checkpoint record: the keep-open instructions below are superseded by
+> the [current post-merge lifecycle](development-flow.md#5-merge-and-record-any-required-follow-up).
+> Close a fully implemented Issue after successful merge and mandatory pre-merge
+> acceptance, then perform required post-merge verification. Recorded test outcomes,
+> limitations, and pending deployment verification below are unchanged.
+
 The earlier published v0.4.0 artifacts contained Draft v1.0 runtime code despite
 v2.0 documentation. The maintainer's [Issue #3 update](https://github.com/takahirox/tsl-node-editor/issues/3#issuecomment-6171268446)
 requires **v0.4.1** for both packages and asks that the Issue remain open until

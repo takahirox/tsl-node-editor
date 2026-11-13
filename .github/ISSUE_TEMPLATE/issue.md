@@ -44,3 +44,7 @@ Record only genuinely necessary checks possible only after merge, or state None.
 For changes that require deployment verification, record publication and published-site
 checks here and keep them pending until performed. Pre-merge validation does not
 prove deployment succeeded. Do not add these checks routinely for documentation changes.
+Pending post-merge-only checks do not prevent closing a fully implemented Issue after
+merge and mandatory pre-merge acceptance. Follow the
+[post-merge lifecycle](../../docs/development-flow.md#5-merge-and-record-any-required-follow-up)
+to record evidence and track actual defects in new or existing linked Issues.

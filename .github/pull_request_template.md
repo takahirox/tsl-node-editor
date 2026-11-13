@@ -9,7 +9,9 @@ Explain the problem and the focused changes that address it.
 ## Outcome
 
 Describe the resulting behavior, with a before/after example when useful.
-State any intentionally incomplete scope; claim to close an Issue only when fully addressed.
+State any intentionally incomplete scope and remaining work; do not automatically close
+the parent Issue for partial work. Pending post-merge-only checks do not make a complete
+implementation partial.
 
 ## Validation
 
@@ -20,10 +22,15 @@ and existing repository tooling; documentation-only changes need no unrelated ru
 
 ## Related Issues
 
-Link the source Issue and any related Issues. Use `Closes #<number>` only for a complete solution.
+Link the source Issue and any related Issues. Use and preserve `Closes #<number>` for a
+complete solution with applicable mandatory pre-merge acceptance satisfied, even when
+post-merge-only verification is pending. Use a non-closing reference for partial work.
 
 ## Required post-merge verification
 
 State None unless the Issue requires checks possible only after merge.
 List any such checks separately as pending until performed; pre-merge evidence
 does not prove publication or deployment succeeded.
+After merge and Issue closure, follow the
+[post-merge lifecycle](../docs/development-flow.md#5-merge-and-record-any-required-follow-up)
+for accurate evidence and linked defect Issues. Closure does not claim pending checks passed.

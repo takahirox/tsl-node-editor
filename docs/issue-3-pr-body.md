@@ -1,3 +1,10 @@
+> Historical PR body: the keep-open instruction below is superseded by the
+> [current post-merge lifecycle](development-flow.md#5-merge-and-record-any-required-follow-up).
+> Preserve `Closes #3` for a complete implementation with mandatory pre-merge
+> acceptance satisfied; close the Issue after successful merge, then perform required
+> verification. Recorded test outcomes, review status, and pending deployment evidence
+> below describe the earlier checkpoint and are not new verification claims.
+
 ## Summary
 
 The editor exported Draft v1.0 TSL data and imported assets without the TSL loader.

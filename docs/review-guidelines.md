@@ -48,6 +48,17 @@ post-merge verification separately as pending until performed. Pre-merge evidenc
 does not prove deployment or publication succeeded. This separation preserves all
 implementation requirements and applicable pre-merge checks.
 
+For a complete implementation with mandatory pre-merge acceptance satisfied, preserve
+`Closes #N`. Do not request its removal, keep the source Issue open, or withhold
+approval solely because post-merge-only verification is pending. That pending work
+does not make the implementation partial. ProjectWeave publication adds the closing
+reference and its merge/close stages close the Issue; contradictory review requests
+cause repeated review → fix → publication → review loops.
+
+Missing implementation, mandatory pre-merge tests, required protections, and genuinely
+necessary pre-merge human acceptance remain blockers. Intentional partial work must
+state the remaining scope and use a non-closing reference to the parent Issue.
+
 ## Choose the review outcome
 
 - **Agent-fixable findings:** Request concrete fixes for missing implementation,
@@ -68,8 +79,17 @@ implementation requirements and applicable pre-merge checks.
 
 ## Report required post-merge results honestly
 
-If post-merge verification is required by the Issue, keep it pending until performed,
-then record actual results, including failures and necessary follow-up. Do not report
-deployment or publication as successful based on pre-merge validation alone.
+After successful merge of a complete implementation, close the original Issue and follow the
+[post-merge lifecycle](development-flow.md#5-merge-and-record-any-required-follow-up).
+Keep genuinely required verification pending until performed and record accurate
+evidence in the merged PR, closed Issue, or a linked validation report. Report
+unperformed and environment-blocked checks with reasons; closure does not claim
+they passed. Do not report deployment or publication as successful based on
+pre-merge validation alone. An unavailable environment alone is not a product defect.
+
+For actual defects, check for an equivalent Issue first, then reuse it or create a
+new linked Issue with the details required by that lifecycle. Do not reopen the
+original Issue solely for post-merge follow-up. Older keep-open instructions are
+superseded by this lifecycle; preserve their historical test outcomes and evidence.
 For templates/documentation-only Issues, state None unless there is a concrete reason
 for required post-merge work.
